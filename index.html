@@ -13,7 +13,6 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
-        /* Stylování posuvníků pro lepší vzhled na mobilu */
         input[type=range] {
             -webkit-appearance: none;
             width: 100%;
@@ -35,15 +34,6 @@
             cursor: pointer;
             -webkit-appearance: none;
             margin-top: -8px;
-            box-shadow: 0 4px 6px -1px rgba(14, 165, 233, 0.5);
-        }
-        input[type=range]::-moz-range-thumb {
-            height: 24px;
-            width: 24px;
-            border: none;
-            border-radius: 50%;
-            background: #0ea5e9;
-            cursor: pointer;
             box-shadow: 0 4px 6px -1px rgba(14, 165, 233, 0.5);
         }
     </style>
@@ -97,27 +87,59 @@
 
         <!-- 1. PŘEHLED (DASHBOARD) -->
         <section id="tab-dashboard" class="tab-content space-y-6">
-            
-            <!-- NOVINKA: Rychlé ovládání Comfee -->
+            <!-- Souhrnné karty -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-slate-800/80 border border-slate-700/60 p-4 rounded-2xl shadow-sm">
+                    <span class="text-xs uppercase font-semibold text-slate-400">Celkem vody</span>
+                    <div class="mt-2 flex items-baseline">
+                        <span id="totalWaterStat" class="text-3xl font-bold text-slate-100">0.00</span>
+                        <span class="ml-1 text-cyan-400 font-medium">litrů</span>
+                    </div>
+                </div>
+                <div class="bg-slate-800/80 border border-slate-700/60 p-4 rounded-2xl shadow-sm">
+                    <span class="text-xs uppercase font-semibold text-slate-400">Aktivní odvlhčovač</span>
+                    <div class="mt-2 flex items-baseline">
+                        <span id="activeDevicesStat" class="text-3xl font-bold text-slate-100">0</span>
+                        <span class="ml-1 text-slate-400 text-sm">zapnutých</span>
+                    </div>
+                </div>
+                <div class="bg-slate-800/80 border border-slate-700/60 p-4 rounded-2xl shadow-sm">
+                    <span class="text-xs uppercase font-semibold text-slate-400">Místnosti nad 55%</span>
+                    <div class="mt-2 flex items-baseline">
+                        <span id="highHumidityStat" class="text-3xl font-bold text-slate-100">0</span>
+                        <span class="ml-1 text-amber-400 text-sm">místností</span>
+                    </div>
+                </div>
+                <div class="bg-slate-800/80 border border-slate-700/60 p-4 rounded-2xl shadow-sm">
+                    <span class="text-xs uppercase font-semibold text-slate-400">Odhad spotřeby</span>
+                    <div class="mt-2 flex items-baseline">
+                        <span id="totalCostStat" class="text-3xl font-bold text-slate-100">0 Kč</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rychlé ovládání Comfee -->
             <div class="bg-slate-800/80 border border-slate-700/60 p-5 rounded-2xl shadow-sm">
                 <div class="flex justify-between items-center mb-3">
                     <h3 class="font-semibold text-slate-200 flex items-center">
                         <i class="fa-solid fa-power-off text-cyan-400 mr-2"></i> Rychlé ovládání Comfee
                     </h3>
-                    <span id="comfeeRoomTarget" class="text-xs font-medium text-cyan-400 bg-cyan-500/10 px-3 py-1 rounded-full"></span>
+                    <select id="quickRoomSelect" class="bg-slate-900 border border-slate-700 text-cyan-400 text-xs font-medium rounded-lg px-2.5 py-1 focus:outline-none">
+                        <!-- Dynamicky -->
+                    </select>
                 </div>
-                <p class="text-xs text-slate-400 mb-4">Jedním ťuknutím změníš stav. Aplikace uloží čas akce k poslednímu měření.</p>
+                <p class="text-xs text-slate-400 mb-4">Jedním ťuknutím přepneš stav odvlhčovače pro vybranou místnost.</p>
                 <div class="grid grid-cols-2 gap-4">
-                    <button onclick="quickToggleComfee('zapnutý')" class="flex items-center justify-center space-x-3 bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-600/30 text-emerald-400 font-bold py-5 rounded-2xl transition shadow-md shadow-emerald-950/20">
-                        <i class="fa-solid fa-play text-xl"></i> <span>ZAPNOUT</span>
+                    <button onclick="quickToggleComfee('zapnutý')" class="flex items-center justify-center space-x-3 bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-600/30 text-emerald-400 font-bold py-4 rounded-2xl transition shadow">
+                        <i class="fa-solid fa-play text-lg"></i> <span>ZAPNOUT</span>
                     </button>
-                    <button onclick="quickToggleComfee('vypnutý')" class="flex items-center justify-center space-x-3 bg-slate-700/50 hover:bg-slate-700 border border-slate-700 text-slate-300 font-bold py-5 rounded-2xl transition">
-                        <i class="fa-solid fa-stop text-xl"></i> <span>VYPNOUT</span>
+                    <button onclick="quickToggleComfee('vypnutý')" class="flex items-center justify-center space-x-3 bg-slate-700/50 hover:bg-slate-700 border border-slate-700 text-slate-300 font-bold py-4 rounded-2xl transition">
+                        <i class="fa-solid fa-stop text-lg"></i> <span>VYPNOUT</span>
                     </button>
                 </div>
             </div>
 
-            <!-- Karty místností (Aktuální stav) -->
+            <!-- Karty místností -->
             <div>
                 <h2 class="text-lg font-semibold text-slate-200 mb-4 flex items-center">
                     <i class="fa-solid fa-house-chimney text-cyan-400 mr-2"></i> Aktuální stav v místnostech
@@ -143,13 +165,11 @@
 
         <!-- 3. HISTORIE -->
         <section id="tab-history" class="tab-content hidden space-y-6">
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-800/80 p-4 rounded-2xl border border-slate-700/60">
+            <div class="flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-800/80 p-4 rounded-2xl border border-slate-700/60">
                 <h2 class="text-xl font-bold text-slate-100">Kompletní historie</h2>
-                <div class="flex items-center space-x-3 w-full sm:w-auto">
-                    <select id="historyRoomFilter" onchange="renderHistoryTable()" class="bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-xl px-3 py-2 focus:outline-none focus:border-cyan-500 w-full">
-                        <option value="">Všechny místnosti</option>
-                    </select>
-                </div>
+                <select id="historyRoomFilter" onchange="renderHistoryTable()" class="bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-xl px-3 py-2 focus:outline-none">
+                    <option value="">Všechny místnosti</option>
+                </select>
             </div>
             <div class="bg-slate-800/80 border border-slate-700/60 rounded-2xl overflow-hidden shadow-sm">
                 <div class="overflow-x-auto">
@@ -161,6 +181,7 @@
                                 <th class="p-3.5 font-semibold">Vlhkost</th>
                                 <th class="p-3.5 font-semibold">Teplota</th>
                                 <th class="p-3.5 font-semibold">Stav</th>
+                                <th class="p-3.5 font-semibold">Voda</th>
                                 <th class="p-3.5 font-semibold text-right">Akce</th>
                             </tr>
                         </thead>
@@ -175,15 +196,15 @@
         <!-- 4. GRAFY & STATISTIKY -->
         <section id="tab-charts" class="tab-content hidden space-y-6">
             <div class="flex justify-between items-center">
-                <h2 class="text-xl font-bold text-slate-100">Grafy</h2>
-                <select id="statsTimeRange" onchange="renderChartsAndStats()" class="bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-xl px-3 py-2 focus:outline-none focus:border-cyan-500">
+                <h2 class="text-xl font-bold text-slate-100">Grafy a vývoj</h2>
+                <select id="statsTimeRange" onchange="renderChartsAndStats()" class="bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-xl px-3 py-2 focus:outline-none">
                     <option value="7">Posledních 7 dní</option>
                     <option value="30">Posledních 30 dní</option>
                     <option value="all" selected>Celá historie</option>
                 </select>
             </div>
             <div class="bg-slate-800/80 border border-slate-700/60 p-5 rounded-2xl">
-                <h3 class="font-semibold text-slate-200 mb-4">Vývoj vlhkosti (%)</h3>
+                <h3 class="font-semibold text-slate-200 mb-4">Vývoj relativní vlhkosti (%)</h3>
                 <div class="h-80 relative">
                     <canvas id="detailedChart"></canvas>
                 </div>
@@ -193,7 +214,7 @@
         <!-- 5. NASTAVENÍ -->
         <section id="tab-settings" class="tab-content hidden space-y-6">
             <div class="bg-slate-800/80 border border-slate-700/60 p-6 rounded-2xl space-y-6">
-                <h2 class="text-xl font-bold text-slate-100">Záloha a obnova</h2>
+                <h2 class="text-xl font-bold text-slate-100">Nastavení a záloha</h2>
                 <div class="flex flex-wrap gap-3">
                     <button onclick="exportJSON()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-xl text-sm font-medium transition flex items-center space-x-1.5"><i class="fa-solid fa-download"></i> <span>Export JSON</span></button>
                     <label class="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-xl text-sm font-medium transition flex items-center space-x-1.5 cursor-pointer">
@@ -202,9 +223,9 @@
                     </label>
                 </div>
                 <div class="border-t border-slate-700 pt-6">
-                    <h3 class="font-bold text-red-400 mb-2">Nebezpečná zóna</h3>
-                    <p class="text-xs text-slate-400 mb-3">Smazání celé databáze a obnovení výchozích dat.</p>
-                    <button onclick="resetToFactoryDefaults()" class="bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 px-4 py-2 rounded-xl text-sm font-medium transition">Obnovit tovární stav</button>
+                    <h3 class="font-bold text-red-400 mb-2">Reset databáze</h3>
+                    <p class="text-xs text-slate-400 mb-3">Obnovení výchozích historických dat v případě zatuhnutí.</p>
+                    <button onclick="resetToFactoryDefaults()" class="bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 px-4 py-2 rounded-xl text-sm font-medium transition">Obnovit výchozí stav</button>
                 </div>
             </div>
         </section>
@@ -219,148 +240,90 @@
                 <button onclick="closeModal('quickAddModal')" class="text-slate-400 hover:text-slate-200"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
             <form id="measurementForm" onsubmit="saveMeasurement(event)" class="space-y-6">
-                <input type="hidden" id="editMeasurementId">
-                
-                <!-- Místnost -->
                 <div>
                     <label class="block text-xs font-semibold text-slate-400 mb-1.5">Místnost *</label>
-                    <select id="mRoom" required class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100 focus:outline-none focus:border-cyan-500">
+                    <select id="mRoom" required class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100 focus:outline-none">
                         <!-- Dynamicky -->
                     </select>
                 </div>
-
-                <!-- NOVINKA: Grafické posuvníky jako na nákresu -->
-                
-                <!-- Vlhkost -->
                 <div class="space-y-2">
                     <div class="flex justify-between items-baseline">
                         <label class="block text-xs font-semibold text-slate-400">Relativní vlhkost (%)</label>
                         <span id="mHumidityDisplay" class="text-3xl font-bold text-cyan-400">55%</span>
                     </div>
                     <input type="range" id="mHumidity" min="20" max="90" value="55" step="1" oninput="updateSliderDisplay('mHumidity', '%')">
-                    <div class="flex justify-between text-xs text-slate-600 px-1">
-                        <span>20%</span><span>55%</span><span>90%</span>
-                    </div>
                 </div>
-
-                <!-- Teplota -->
                 <div class="space-y-2">
                     <div class="flex justify-between items-baseline">
                         <label class="block text-xs font-semibold text-slate-400">Teplota (°C)</label>
                         <span id="mTemperatureDisplay" class="text-3xl font-bold text-emerald-400">21.0°C</span>
                     </div>
                     <input type="range" id="mTemperature" min="0" max="40" value="21" step="0.1" oninput="updateSliderDisplay('mTemperature', '°C')">
-                    <div class="flex justify-between text-xs text-slate-600 px-1">
-                        <span>0°C</span><span>20°C</span><span>40°C</span>
-                    </div>
                 </div>
-                <!-- Konec posuvníků -->
-
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-xs font-semibold text-slate-400 mb-1.5">Datum a čas *</label>
-                        <input type="datetime-local" id="mTimestamp" required class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100 focus:outline-none focus:border-cyan-500">
+                        <input type="datetime-local" id="mTimestamp" required class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
                     </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-400 mb-1.5">Zdroj měření</label>
-                        <select id="mSource" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100 focus:outline-none focus:border-cyan-500">
-                            <option value="Ruční zadání" selected>Ruční zadání</option>
-                            <option value="Netatmo">Netatmo</option>
-                            <option value="Interní čidlo Comfee">Interní čidlo Comfee</option>
-                            <option value="Jiné zařízení">Jiné zařízení</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-xs font-semibold text-slate-400 mb-1.5">Stav odvlhčovače</label>
-                        <select id="mDeviceState" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100 focus:outline-none focus:border-cyan-500">
+                        <select id="mDeviceState" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
                             <option value="vypnutý" selected>Vypnutý</option>
                             <option value="zapnutý">Zapnutý</option>
                         </select>
                     </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-400 mb-1.5">Voda v nádrži (odhad)</label>
-                        <select id="mTankLevel" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100 focus:outline-none focus:border-cyan-500">
-                            <option value="Prázdná" selected>Prázdná</option>
-                            <option value="Zaplněno ¼">Zaplněno ¼</option>
-                            <option value="Zaplněno ½">Zaplněno ½</option>
-                            <option value="Zaplněno ¾">Zaplněno ¾</option>
-                            <option value="Plná">Plná</option>
-                        </select>
-                    </div>
                 </div>
-                
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1.5">Poznámka / Voda</label>
+                    <input type="text" id="mNote" placeholder="např. přidáno 0.5 l vody" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
+                </div>
                 <div class="flex justify-end space-x-3 pt-3 border-t border-slate-700">
-                    <button type="button" onclick="closeModal('quickAddModal')" class="bg-slate-700 hover:bg-slate-600 text-white px-6 py-2.5 rounded-xl text-sm font-medium transition">Zrušit</button>
-                    <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-2.5 rounded-xl text-sm font-semibold transition shadow">Uložit měření</button>
+                    <button type="button" onclick="closeModal('quickAddModal')" class="bg-slate-700 hover:bg-slate-600 text-white px-6 py-2.5 rounded-xl text-sm font-medium">Zrušit</button>
+                    <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow">Uložit měření</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- MODÁLNÍ OKNO: SPRÁVA MÍSTNOSTI -->
+    <!-- MODÁLNÍ OKNO: MÍSTNOST -->
     <div id="roomModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
         <div class="bg-slate-800 border border-slate-700 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
             <div class="flex justify-between items-center border-b border-slate-700 pb-3">
-                <h3 id="roomModalTitle" class="font-bold text-lg text-slate-100">Přidat místnost</h3>
+                <h3 class="font-bold text-lg text-slate-100">Přidat místnost</h3>
                 <button onclick="closeModal('roomModal')" class="text-slate-400 hover:text-slate-200"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
             <form id="roomForm" onsubmit="saveRoom(event)" class="space-y-4">
-                <input type="hidden" id="editRoomId">
                 <div>
                     <label class="block text-xs font-semibold text-slate-400 mb-1.5">Název místnosti *</label>
-                    <input type="text" id="rName" required placeholder="např. Ložnice" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100 focus:outline-none focus:border-cyan-500">
+                    <input type="text" id="rName" required class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
                 </div>
                 <div class="flex justify-end space-x-3 pt-3 border-t border-slate-700">
-                    <button type="button" onclick="closeModal('roomModal')" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-xl text-sm font-medium transition">Zrušit</button>
-                    <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2 rounded-xl text-sm font-semibold transition shadow">Uložit místnost</button>
+                    <button type="button" onclick="closeModal('roomModal')" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-xl text-sm font-medium">Zrušit</button>
+                    <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2 rounded-xl text-sm font-semibold">Uložit</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- JavaScript Logika & IndexedDB -->
+    <!-- JavaScript Logika -->
     <script>
-        // PWA Service Worker Registration
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed:', err));
-        }
-
-        // Install Prompt
-        let deferredPrompt;
-        const installBtn = document.getElementById('installBtn');
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            installBtn.classList.remove('hidden');
-        });
-        installBtn.addEventListener('click', async () => {
-            if (deferredPrompt) {
-                deferredPrompt.prompt();
-                const { outcome } = await deferredPrompt.userChoice;
-                if (outcome === 'accepted') installBtn.classList.add('hidden');
-                deferredPrompt = null;
-            }
-        });
-
-        // IndexedDB Setup
-        const DB_NAME = 'KolobeznikOdvlhcovaniDBV2'; // Změněno V2 pro čistý start s novým modelem
+        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V3';
         const DB_VERSION = 1;
         let db = null;
 
         const defaultRooms = [
-            { id: 'room-1', name: 'Koloběžníkův pokoj' },
-            { id: 'room-2', name: 'Valašský pokoj' },
-            { id: 'room-3', name: 'Zelený pokoj' }
+            { id: 'room-1', name: 'Koloběžníkův pokoj', initialWater: 34.76 },
+            { id: 'room-2', name: 'Valašský pokoj', initialWater: 9.70 },
+            { id: 'room-3', name: 'Zelený pokoj', initialWater: 2.50 }
         ];
 
-        // Výchozí historická měření dle zadání zkrácena pro přehlednost
         const defaultMeasurements = [
-            { roomId: 'room-1', timestamp: '2026-10-29T20:00', humidity: 63, temperature: 21.0, source: 'Netatmo', deviceState: 'vypnutý', tankLevel: 'Prázdná', note: 'Výchozí stav' },
-            { roomId: 'room-2', timestamp: '2026-10-29T12:00', humidity: 50, temperature: 20.0, source: 'Interní čidlo Comfee', deviceState: 'zapnutý', tankLevel: 'Prázdná', note: 'Výchozí stav' },
-            { roomId: 'room-3', timestamp: '2026-10-29T12:00', humidity: 41, temperature: 20.0, source: 'Interní čidlo Comfee', deviceState: 'zapnutý', tankLevel: 'Plná', note: 'Výchozí stav' }
+            { roomId: 'room-1', timestamp: '2026-10-10T12:00', humidity: 56, temperature: 19.0, source: 'Netatmo', deviceState: 'zapnutý', waterAdded: 1.5, note: 'Pokles vlhkosti' },
+            { roomId: 'room-1', timestamp: '2026-10-14T08:00', humidity: 55, temperature: 21.9, source: 'Netatmo', deviceState: 'vypnutý', waterAdded: 1.25, note: 'Ráno' },
+            { roomId: 'room-1', timestamp: '2026-10-18T12:00', humidity: 56, temperature: 20.7, source: 'Netatmo', deviceState: 'zapnutý', waterAdded: 2.5, note: 'Nádrž plná' },
+            { roomId: 'room-1', timestamp: '2026-10-29T20:00', humidity: 63, temperature: 21.0, source: 'Netatmo', deviceState: 'vypnutý', waterAdded: 0, note: 'Po dni bez odvlhčování' },
+            { roomId: 'room-2', timestamp: '2026-10-25T15:00', humidity: 50, temperature: 20.0, source: 'Comfee', deviceState: 'zapnutý', waterAdded: 2.5, note: 'Valašský pokoj' },
+            { roomId: 'room-3', timestamp: '2026-10-29T12:00', humidity: 41, temperature: 20.0, source: 'Comfee', deviceState: 'zapnutý', waterAdded: 2.5, note: 'Zelený pokoj' }
         ];
 
         function initDB() {
@@ -378,57 +341,44 @@
                         defaultRooms.forEach(r => rStore.add(r));
                     }
                     if (!database.objectStoreNames.contains('measurements')) {
-                        // Změněno: AutoIncrement klíč pro historii
                         const mStore = database.createObjectStore('measurements', { keyPath: 'id', autoIncrement: true });
-                        mStore.createIndex('roomId', 'roomId', { unique: false });
-                        mStore.createIndex('timestamp', 'timestamp', { unique: false });
-                        // Přidání výchozích dat
                         defaultMeasurements.forEach(m => mStore.add(m));
                     }
                 };
             });
         }
 
-        // Pomocné funkce pro IndexedDB
-        function getAll(storeName, indexName = null, query = null) {
+        function getAll(storeName) {
             return new Promise((resolve, reject) => {
-                if (!db) reject('DB not initialized');
+                if (!db) return resolve([]);
                 const transaction = db.transaction(storeName, 'readonly');
                 const store = transaction.objectStore(storeName);
-                let request;
-                if (indexName) {
-                    const index = store.index(indexName);
-                    request = index.getAll(query);
-                } else {
-                    request = store.getAll();
-                }
+                const request = store.getAll();
                 request.onsuccess = () => resolve(request.result);
-                request.onerror = () => reject(request.error);
+                request.onerror = () => resolve([]);
             });
         }
 
-        function addData(storeName, item) {
+        function put(storeName, item) {
             return new Promise((resolve, reject) => {
                 const transaction = db.transaction(storeName, 'readwrite');
                 const store = transaction.objectStore(storeName);
-                const request = store.add(item);
+                const request = store.put(item);
                 request.onsuccess = () => resolve(request.result);
                 request.onerror = () => reject(request.error);
             });
         }
 
-        function removeDB() {
+        function remove(storeName, id) {
             return new Promise((resolve, reject) => {
-                const req = indexedDB.deleteDatabase(DB_NAME);
-                req.onsuccess = () => resolve();
-                req.onerror = (err) => reject(err);
+                const transaction = db.transaction(storeName, 'readwrite');
+                const store = transaction.objectStore(storeName);
+                const request = store.delete(id);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
             });
         }
 
-        // Globální proměnná pro zapamatování aktivní místnosti v Dashboardu
-        let activeDashboardRoomId = null;
-
-        // Navigace záložek
         function switchTab(tabId) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
             document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -441,4 +391,244 @@
                 activeBtn.classList.remove('text-slate-400', 'hover:text-slate-200', 'hover:bg-slate-800');
                 activeBtn.classList.add('bg-cyan-500/20', 'text-cyan-400', 'border', 'border-cyan-500/30');
             }
-            if (
+            if (tabId === 'dashboard') loadDashboard();
+            if (tabId === 'rooms') renderRoomsList();
+            if (tabId === 'history') renderHistoryTable();
+            if (tabId === 'charts') renderChartsAndStats();
+        }
+
+        function openModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+            if (id === 'quickAddModal') {
+                populateModalSelects();
+                const now = new Date();
+                now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+                document.getElementById('mTimestamp').value = now.toISOString().slice(0, 16);
+                updateSliderDisplay('mHumidity', '%');
+                updateSliderDisplay('mTemperature', '°C');
+            }
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        function updateSliderDisplay(id, unit) {
+            const val = document.getElementById(id).value;
+            document.getElementById(id + 'Display').innerText = val + unit;
+        }
+
+        async function populateModalSelects() {
+            const rooms = await getAll('rooms');
+            document.getElementById('mRoom').innerHTML = rooms.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+        }
+
+        async function loadDashboard() {
+            const rooms = await getAll('rooms');
+            const measurements = await getAll('measurements');
+
+            // Select pro rychlé ovládání
+            const quickSelect = document.getElementById('quickRoomSelect');
+            if (quickSelect && rooms.length > 0) {
+                const currentVal = quickSelect.value;
+                quickSelect.innerHTML = rooms.map(r => `<option value="${r.id}" ${r.id === currentVal ? 'selected' : ''}>${r.name}</option>`).join('');
+            }
+
+            let totalWater = rooms.reduce((sum, r) => sum + (r.initialWater || 0), 0);
+            measurements.forEach(m => totalWater += (m.waterAdded || 0));
+            document.getElementById('totalWaterStat').innerText = totalWater.toFixed(2);
+
+            let activeDevs = 0;
+            rooms.forEach(r => {
+                const rMeas = measurements.filter(m => m.roomId === r.id).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+                if (rMeas[0] && rMeas[0].deviceState === 'zapnutý') activeDevs++;
+            });
+            document.getElementById('activeDevicesStat').innerText = activeDevs;
+
+            let highCount = 0;
+            rooms.forEach(r => {
+                const rMeas = measurements.filter(m => m.roomId === r.id).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+                if (rMeas[0] && rMeas[0].humidity > 55) highCount++;
+            });
+            document.getElementById('highHumidityStat').innerText = highCount;
+            document.getElementById('totalCostStat').innerText = Math.round(activeDevs * 300 * 24 / 1000 * 6) + ' Kč/den';
+
+            const grid = document.getElementById('dashboardRoomsGrid');
+            grid.innerHTML = rooms.map(r => {
+                const rMeas = measurements.filter(m => m.roomId === r.id).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+                const latest = rMeas[0] || { humidity: 'N/A', temperature: 'N/A', timestamp: 'Bez dat', deviceState: 'vypnutý' };
+                const roomWater = (r.initialWater || 0) + rMeas.reduce((s, m) => s + (m.waterAdded || 0), 0);
+                const isHigh = latest.humidity !== 'N/A' && latest.humidity > 55;
+
+                return `
+                    <div class="bg-slate-800/80 border ${isHigh ? 'border-amber-500/50' : 'border-slate-700/60'} p-5 rounded-2xl shadow-sm space-y-4 flex flex-col justify-between">
+                        <div>
+                            <div class="flex justify-between items-start">
+                                <h3 class="font-bold text-lg text-slate-100">${r.name}</h3>
+                                <span class="text-xs px-2.5 py-1 rounded-full ${isHigh ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'}">${latest.humidity !== 'N/A' ? latest.humidity + ' %' : 'N/A'}</span>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3 bg-slate-900/50 p-3 rounded-xl border border-slate-700/50">
+                            <div>
+                                <span class="text-xs text-slate-400 block">Teplota</span>
+                                <span class="text-lg font-bold text-slate-100">${latest.temperature !== null && latest.temperature !== 'N/A' ? latest.temperature + ' °C' : 'N/A'}</span>
+                            </div>
+                            <div>
+                                <span class="text-xs text-slate-400 block">Voda celkem</span>
+                                <span class="text-lg font-bold text-cyan-400">${roomWater.toFixed(2)} l</span>
+                            </div>
+                        </div>
+                        <div class="text-xs text-slate-400 flex justify-between items-center pt-2 border-t border-slate-700/50">
+                            <span>Stav: <strong class="text-slate-200 capitalize">${latest.deviceState}</strong></span>
+                            <span>${latest.timestamp !== 'Bez dat' ? new Date(latest.timestamp).toLocaleString('cs-CZ') : ''}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function quickToggleComfee(state) {
+            const select = document.getElementById('quickRoomSelect');
+            const roomId = select ? select.value : 'room-1';
+            const rooms = await getAll('rooms');
+            const room = rooms.find(r => r.id === roomId);
+            
+            const measurements = await getAll('measurements');
+            const rMeas = measurements.filter(m => m.roomId === roomId).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+            const last = rMeas[0];
+
+            const newMeas = {
+                roomId: roomId,
+                timestamp: new Date().toISOString().slice(0, 16),
+                humidity: last ? last.humidity : 55,
+                temperature: last ? last.temperature : 21.0,
+                source: 'Rychlé tlačítko',
+                deviceState: state,
+                waterAdded: 0,
+                note: `Comfee přepnut na: ${state}`
+            };
+
+            await put('measurements', newMeas);
+            alert(`Odvlhčovač v místnosti "${room ? room.name : ''}" nastaven na: ${state}`);
+            loadDashboard();
+        }
+
+        async function saveMeasurement(e) {
+            e.preventDefault();
+            const measurement = {
+                roomId: document.getElementById('mRoom').value,
+                timestamp: document.getElementById('mTimestamp').value,
+                humidity: parseFloat(document.getElementById('mHumidity').value),
+                temperature: parseFloat(document.getElementById('mTemperature').value),
+                source: 'Ruční posuvník',
+                deviceState: document.getElementById('mDeviceState').value,
+                waterAdded: 0,
+                note: document.getElementById('mNote').value
+            };
+            await put('measurements', measurement);
+            closeModal('quickAddModal');
+            loadDashboard();
+        }
+
+        async function renderHistoryTable() {
+            const measurements = await getAll('measurements');
+            const rooms = await getAll('rooms');
+            const filterSelect = document.getElementById('historyRoomFilter');
+            const currentFilter = filterSelect.value;
+            
+            filterSelect.innerHTML = '<option value="">Všechny místnosti</option>' + rooms.map(r => `<option value="${r.id}" ${r.id === currentFilter ? 'selected' : ''}>${r.name}</option>`).join('');
+
+            const filtered = currentFilter ? measurements.filter(m => m.roomId === currentFilter) : measurements;
+            filtered.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+            document.getElementById('historyTableBody').innerHTML = filtered.map(m => {
+                const room = rooms.find(r => r.id === m.roomId);
+                return `
+                    <tr class="hover:bg-slate-700/20 transition">
+                        <td class="p-3.5">${new Date(m.timestamp).toLocaleString('cs-CZ')}</td>
+                        <td class="p-3.5 font-medium text-slate-200">${room ? room.name : ''}</td>
+                        <td class="p-3.5 text-cyan-400 font-bold">${m.humidity}%</td>
+                        <td class="p-3.5">${m.temperature} °C</td>
+                        <td class="p-3.5 capitalize"><span class="px-2 py-0.5 rounded-full text-xs ${m.deviceState === 'zapnutý' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-300'}">${m.deviceState}</span></td>
+                        <td class="p-3.5">${m.waterAdded} l</td>
+                        <td class="p-3.5 text-right"><button onclick="deleteMeasurement('${m.id}')" class="text-red-400 hover:text-red-300 text-xs"><i class="fa-solid fa-trash"></i></button></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function deleteMeasurement(id) {
+            if (confirm('Smazat záznam?')) {
+                await remove('measurements', id);
+                renderHistoryTable();
+            }
+        }
+
+        let detailedChartInstance = null;
+        async function renderChartsAndStats() {
+            const measurements = await getAll('measurements');
+            measurements.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
+            const labels = measurements.map(m => new Date(m.timestamp).toLocaleDateString('cs-CZ') + ' ' + m.timestamp.slice(11, 16));
+            
+            const ctx = document.getElementById('detailedChart').getContext('2d');
+            if (detailedChartInstance) detailedChartInstance.destroy();
+
+            detailedChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{ label: 'Vlhkost (%)', data: measurements.map(m => m.humidity), borderColor: '#0ea5e9', tension: 0.3 }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+                        y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' }, min: 20, max: 90 }
+                    }
+                }
+            });
+        }
+
+        async function renderRoomsList() {
+            const rooms = await getAll('rooms');
+            document.getElementById('roomsListGrid').innerHTML = rooms.map(r => `
+                <div class="bg-slate-800/80 border border-slate-700/60 p-5 rounded-2xl space-y-2">
+                    <h3 class="font-bold text-lg text-slate-100">${r.name}</h3>
+                    <p class="text-xs text-slate-400">Počáteční voda: ${r.initialWater} l</p>
+                </div>
+            `).join('');
+        }
+
+        async function saveRoom(e) {
+            e.preventDefault();
+            const name = document.getElementById('rName').value;
+            await put('rooms', { id: 'room-' + Date.now(), name, initialWater: 0 });
+            closeModal('roomModal');
+            renderRoomsList();
+        }
+
+        async function resetToFactoryDefaults() {
+            if (confirm('Obnovit výchozí stav databáze?')) {
+                const req = indexedDB.deleteDatabase(DB_NAME);
+                req.onsuccess = () => location.reload();
+            }
+        }
+
+        async function exportJSON() {
+            const rooms = await getAll('rooms');
+            const measurements = await getAll('measurements');
+            const blob = new Blob([JSON.stringify({ rooms, measurements }, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'zaloha.json';
+            a.click();
+        }
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            await initDB();
+            loadDashboard();
+        });
+    </script>
+</body>
+</html>
