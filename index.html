@@ -16,6 +16,9 @@
         .gauge-container { position: relative; width: 160px; height: 80px; margin: 0 auto; overflow: hidden; }
         .gauge-semicircle { width: 160px; height: 80px; border-top-left-radius: 80px; border-top-right-radius: 80px; background: #334155; position: relative; overflow: hidden; }
         .gauge-needle { width: 4px; height: 70px; background: #0ea5e9; position: absolute; bottom: 0; left: 78px; transform-origin: bottom center; transition: transform 0.15s ease-out; }
+        /* Skrytí scrollbaru pro čistý vzhled */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen pb-24">
@@ -32,19 +35,17 @@
                     <p class="text-xs text-slate-400">Pokročilý systém klimatu</p>
                 </div>
             </div>
-            <div class="flex items-center space-x-2">
-                <button onclick="openRoomModal()" class="bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-1.5 rounded-lg text-sm font-semibold transition shadow">
-                    <i class="fa-solid fa-plus mr-1"></i> Nová místnost
-                </button>
-            </div>
+            <button onclick="openRoomModal()" class="bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-1.5 rounded-lg text-sm font-semibold transition shadow flex items-center space-x-1">
+                <i class="fa-solid fa-plus"></i> <span>Nová místnost</span>
+            </button>
         </div>
     </header>
 
     <!-- Hlavní obsah -->
     <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
 
-        <!-- Navigační záložky s možností řazení -->
-        <div id="navTabsContainer" class="flex items-center space-x-2 overflow-x-auto pb-2 scrollbar-none border-b border-slate-800">
+        <!-- Navigační záložky s plynulým scrollem -->
+        <div id="navTabsContainer" class="flex items-center space-x-2 overflow-x-auto pb-2 no-scrollbar border-b border-slate-800">
             <!-- Generováno dynamicky -->
         </div>
 
@@ -81,7 +82,7 @@
 
     <!-- JavaScript Logika -->
     <script>
-        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V7';
+        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V8';
         const DB_VERSION = 1;
         let db = null;
         let activeTab = 'room-1';
@@ -142,7 +143,6 @@
         function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
         function switchTab(tabId) { activeTab = tabId; renderApp(); }
 
-        // Posun pořadí místnosti (šipky vlevo/vpravo)
         async function moveRoomOrder(roomId, direction) {
             const rooms = await getAll('rooms');
             rooms.sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -152,7 +152,6 @@
             const targetIdx = idx + direction;
             if (targetIdx < 0 || targetIdx >= rooms.length) return;
 
-            // Prohození pořadí
             const tempOrder = rooms[idx].order || idx;
             rooms[idx].order = rooms[targetIdx].order || targetIdx;
             rooms[targetIdx].order = tempOrder;
@@ -186,29 +185,30 @@
                 activeTab = rooms.length > 0 ? rooms[0].id : 'stats';
             }
 
-            // 1. Vykreslení záložek místností + šipky pro řazení + statické záložky
+            // 1. Vykreslení horních záložek (čistý flexbox bez přetékání)
             const tabsContainer = document.getElementById('navTabsContainer');
             let tabsHTML = rooms.map((r, idx) => `
-                <div class="flex items-center bg-slate-800/80 rounded-lg border ${activeTab === r.id ? 'border-cyan-500/50 bg-cyan-500/10' : 'border-slate-700'} overflow-hidden">
-                    <button onclick="switchTab('${r.id}')" class="px-3 py-2 font-medium text-sm whitespace-nowrap transition ${activeTab === r.id ? 'text-cyan-400' : 'text-slate-300'}">
-                        <i class="fa-solid fa-house-chimney mr-1" style="color: ${r.color}"></i> ${r.name}
+                <div class="flex items-center bg-slate-800/90 rounded-xl border ${activeTab === r.id ? 'border-cyan-500 bg-cyan-500/15' : 'border-slate-700'} shrink-0 overflow-hidden shadow-sm">
+                    <button onclick="switchTab('${r.id}')" class="px-3 py-2 font-semibold text-xs whitespace-nowrap transition ${activeTab === r.id ? 'text-cyan-400' : 'text-slate-300'} flex items-center space-x-1.5">
+                        <span class="w-2 h-2 rounded-full" style="background: ${r.color}"></span>
+                        <span>${r.name}</span>
                     </button>
-                    <div class="flex flex-col border-l border-slate-700 text-[10px]">
-                        <button onclick="moveRoomOrder('${r.id}', -1)" ${idx === 0 ? 'disabled class="opacity-30 cursor-not-allowed"' : ''} class="px-1.5 py-0.5 hover:bg-slate-700 text-slate-400"><i class="fa-solid fa-chevron-left"></i></button>
-                        <button onclick="moveRoomOrder('${r.id}', 1)" ${idx === rooms.length - 1 ? 'disabled class="opacity-30 cursor-not-allowed"' : ''} class="px-1.5 py-0.5 hover:bg-slate-700 text-slate-400"><i class="fa-solid fa-chevron-right"></i></button>
+                    <div class="flex flex-col border-l border-slate-700/80 text-[9px] bg-slate-900/40">
+                        <button onclick="moveRoomOrder('${r.id}', -1)" ${idx === 0 ? 'disabled class="opacity-20 cursor-not-allowed"' : ''} class="px-1.5 py-0.5 hover:bg-slate-700 text-slate-400"><i class="fa-solid fa-chevron-left"></i></button>
+                        <button onclick="moveRoomOrder('${r.id}', 1)" ${idx === rooms.length - 1 ? 'disabled class="opacity-20 cursor-not-allowed"' : ''} class="px-1.5 py-0.5 hover:bg-slate-700 text-slate-400"><i class="fa-solid fa-chevron-right"></i></button>
                     </div>
                 </div>
             `).join('');
 
             tabsHTML += `
-                <button onclick="switchTab('stats')" class="tab-btn px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition ${activeTab === 'stats' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-slate-800'}">
-                    <i class="fa-solid fa-chart-line mr-1.5"></i> Statistiky & Grafy
+                <button onclick="switchTab('stats')" class="px-3.5 py-2 rounded-xl font-semibold text-xs whitespace-nowrap shrink-0 transition ${activeTab === 'stats' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' : 'bg-slate-800 text-slate-300 border border-slate-700'}">
+                    <i class="fa-solid fa-chart-line mr-1"></i> Statistiky
                 </button>
-                <button onclick="switchTab('power')" class="tab-btn px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition ${activeTab === 'power' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-slate-800'}">
-                    <i class="fa-solid fa-bolt mr-1.5"></i> Spotřeba
+                <button onclick="switchTab('power')" class="px-3.5 py-2 rounded-xl font-semibold text-xs whitespace-nowrap shrink-0 transition ${activeTab === 'power' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' : 'bg-slate-800 text-slate-300 border border-slate-700'}">
+                    <i class="fa-solid fa-bolt mr-1"></i> Spotřeba & Cena
                 </button>
-                <button onclick="switchTab('backup')" class="tab-btn px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition ${activeTab === 'backup' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-slate-800'}">
-                    <i class="fa-solid fa-database mr-1.5"></i> Záloha
+                <button onclick="switchTab('backup')" class="px-3.5 py-2 rounded-xl font-semibold text-xs whitespace-nowrap shrink-0 transition ${activeTab === 'backup' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' : 'bg-slate-800 text-slate-300 border border-slate-700'}">
+                    <i class="fa-solid fa-database mr-1"></i> Záloha
                 </button>
             `;
             tabsContainer.innerHTML = tabsHTML;
@@ -216,18 +216,16 @@
             const contentContainer = document.getElementById('tabContentContainer');
 
             if (activeTab === 'stats') {
-                // Celkové statistiky s barevnými grafy pro všechny místnosti
                 let totalWater = rooms.reduce((sum, r) => sum + (r.initialWater || 0), 0);
                 measurements.forEach(m => totalWater += (m.waterAdded || 0));
 
                 contentContainer.innerHTML = `
                     <div class="space-y-6">
-                        <div class="bg-slate-800 border border-slate-700/80 p-6 rounded-3xl shadow-xl space-y-4">
-                            <h2 class="text-xl font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-chart-pie mr-2"></i> Celkové souhrnné statistiky domova</h2>
+                        <div class="bg-slate-800 border border-slate-700/80 p-6 rounded-3xl shadow-xl space-y-2">
+                            <h2 class="text-lg font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-chart-pie mr-2"></i> Souhrnné statistiky domova</h2>
                             <div class="text-2xl font-bold text-cyan-400">Celkem zachyceno vody v domě: ${totalWater.toFixed(2)} l</div>
                         </div>
 
-                        <!-- Srovnávací grafy -->
                         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             <div class="bg-slate-800 border border-slate-700/80 p-5 rounded-3xl space-y-3">
                                 <h3 class="font-semibold text-slate-200 text-sm"><i class="fa-solid fa-droplet text-cyan-400 mr-1"></i> Srovnání vlhkosti (%)</h3>
@@ -252,22 +250,30 @@
                     const rMeas = measurements.filter(m => m.roomId === r.id).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
                     if (rMeas[0] && rMeas[0].deviceState === 'zapnutý') activeCount++;
                 });
+
                 contentContainer.innerHTML = `
                     <div class="bg-slate-800 border border-slate-700/80 p-6 rounded-3xl shadow-xl space-y-6">
-                        <h2 class="text-xl font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-bolt mr-2"></i> Odhadovaná spotřeba a náklady</h2>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div class="bg-slate-900/70 p-4 rounded-2xl border border-slate-700 space-y-2">
-                                <label class="block text-xs font-semibold text-slate-400">Cena elektřiny (Kč / kWh)</label>
-                                <input type="number" id="elecPriceInput" value="6.0" step="0.1" onchange="updatePowerCost(${activeCount})" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm text-slate-100">
+                        <h2 class="text-xl font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-bolt mr-2"></i> Spotřeba elektřiny a finanční náklady</h2>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            <div class="bg-slate-900/70 p-5 rounded-2xl border border-slate-700 space-y-3">
+                                <label class="block text-xs font-semibold text-slate-400">Cena elektřiny za 1 kWh (Kč)</label>
+                                <input type="number" id="elecPriceInput" value="6.0" step="0.1" onchange="updatePowerStats(${activeCount})" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-sm text-slate-100 focus:outline-none focus:border-cyan-500">
+                                <p class="text-[11px] text-slate-400">Příkon zapnutého Comfee odvlhčovače: <strong>300 W</strong></p>
+                                <p class="text-[11px] text-slate-400">Aktuálně zapnutých zařízení: <strong class="text-emerald-400">${activeCount}</strong></p>
                             </div>
-                            <div class="bg-slate-900/70 p-4 rounded-2xl border border-slate-700 space-y-2">
-                                <span class="text-xs font-semibold text-slate-400 block">Odhad nákladů za provoz</span>
-                                <div id="powerCostOutput" class="text-2xl font-bold text-emerald-400 mt-1">${Math.round((activeCount * 300 * 24 / 1000) * 6)} Kč / den</div>
-                                <p class="text-[11px] text-slate-500">Příkon kompresoru Comfee: cca 300 W (${activeCount} aktivních zařízení)</p>
+                            <div class="bg-slate-900/70 p-5 rounded-2xl border border-slate-700 space-y-3 flex flex-col justify-between">
+                                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Kalkulace nákladů (při nepřetržitém běhu)</span>
+                                <div class="space-y-1">
+                                    <div class="flex justify-space justify-between text-sm"><span class="text-slate-400">Za 1 hodinu:</span> <strong id="costHour" class="text-slate-100">0 Kč</strong></div>
+                                    <div class="flex justify-space justify-between text-sm"><span class="text-slate-400">Za 1 den (24h):</span> <strong id="costDay" class="text-emerald-400 font-bold">0 Kč</strong></div>
+                                    <div class="flex justify-space justify-between text-sm"><span class="text-slate-400">Za 30 dní:</span> <strong id="costMonth" class="text-cyan-400 font-bold">0 Kč</strong></div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 `;
+                updatePowerStats(activeCount);
+
             } else if (activeTab === 'backup') {
                 contentContainer.innerHTML = `
                     <div class="bg-slate-800 border border-slate-700/80 p-6 rounded-3xl shadow-xl space-y-6">
@@ -285,7 +291,6 @@
                     </div>
                 `;
             } else {
-                // Karta místnosti
                 const r = rooms.find(room => room.id === activeTab);
                 if (!r) return;
 
@@ -319,7 +324,7 @@
                         <!-- 4 KOUTY DLE NÁKRESU -->
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             
-                            <!-- 1. VLEVO NAHOŘE: BUDÍK TEPLOTA (POSUVNÍK + RUČNÍ ZÁPIS) -->
+                            <!-- 1. VLEVO NAHOŘE: BUDÍK TEPLOTA -->
                             <div class="bg-slate-900/70 border border-slate-700/60 p-4 rounded-2xl space-y-3 text-center">
                                 <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block"><i class="fa-solid fa-temperature-three-quarters text-emerald-400 mr-1"></i> Teplota (Budík)</span>
                                 <div class="gauge-container">
@@ -339,7 +344,7 @@
                                 </div>
                             </div>
 
-                            <!-- 2. VPRAVO NAHOŘE: BUDÍK VLHKOST (POSUVNÍK + RUČNÍ ZÁPIS) -->
+                            <!-- 2. VPRAVO NAHOŘE: BUDÍK VLHKOST -->
                             <div class="bg-slate-900/70 border border-slate-700/60 p-4 rounded-2xl space-y-3 text-center">
                                 <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block"><i class="fa-solid fa-droplet text-cyan-400 mr-1"></i> Vlhkost (Budík)</span>
                                 <div class="gauge-container">
@@ -460,10 +465,16 @@
             renderApp();
         }
 
-        function updatePowerCost(activeCount) {
+        function updatePowerStats(activeCount) {
             const price = parseFloat(document.getElementById('elecPriceInput').value) || 6.0;
-            const dailyKWh = (activeCount * 300 * 24) / 1000;
-            document.getElementById('powerCostOutput').innerText = Math.round(dailyKWh * price) + ' Kč / den';
+            const powerKW = (activeCount * 300) / 1000; // 300 W na zařízení
+            const hourCost = powerKW * price;
+            const dayCost = hourCost * 24;
+            const monthCost = dayCost * 30;
+
+            document.getElementById('costHour').innerText = hourCost.toFixed(2) + ' Kč';
+            document.getElementById('costDay').innerText = Math.round(dayCost) + ' Kč';
+            document.getElementById('costMonth').innerText = Math.round(monthCost) + ' Kč';
         }
 
         function renderRoomChart(roomId, rMeasurements, color) {
@@ -487,10 +498,8 @@
         }
 
         function renderGlobalCharts(rooms, measurements) {
-            // Seskupení dat pro globální grafy
             const labels = [...new Set(measurements.map(m => new Date(m.timestamp).toLocaleDateString()))].slice(-7);
 
-            // 1. Vlhkost
             const humCtx = document.getElementById('globalHumChart').getContext('2d');
             new Chart(humCtx, {
                 type: 'line',
@@ -510,7 +519,6 @@
                 options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#cbd5e1', boxWidth: 12 } } }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' }, min: 20, max: 90 } } }
             });
 
-            // 2. Voda
             const waterCtx = document.getElementById('globalWaterChart').getContext('2d');
             new Chart(waterCtx, {
                 type: 'bar',
@@ -525,7 +533,6 @@
                 options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' } } } }
             });
 
-            // 3. Spotřeba W
             const powerCtx = document.getElementById('globalPowerChart').getContext('2d');
             new Chart(powerCtx, {
                 type: 'bar',
