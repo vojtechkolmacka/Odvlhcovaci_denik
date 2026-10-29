@@ -13,10 +13,9 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
-        /* Styl pro analogový budík / tachometr s rotující rafičkou */
         .gauge-container { position: relative; width: 160px; height: 80px; margin: 0 auto; overflow: hidden; }
         .gauge-semicircle { width: 160px; height: 80px; border-top-left-radius: 80px; border-top-right-radius: 80px; background: #334155; position: relative; overflow: hidden; }
-        .gauge-needle { width: 4px; height: 70px; background: #0ea5e9; position: absolute; bottom: 0; left: 78px; transform-origin: bottom center; transition: transform 0.1s ease-out; }
+        .gauge-needle { width: 4px; height: 70px; background: #0ea5e9; position: absolute; bottom: 0; left: 78px; transform-origin: bottom center; transition: transform 0.15s ease-out; }
     </style>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen pb-24">
@@ -30,24 +29,26 @@
                 </div>
                 <div>
                     <h1 class="font-bold text-lg text-cyan-400 tracking-tight">Odvlhčovací deník</h1>
-                    <p class="text-xs text-slate-400">Panel místností a statistik</p>
+                    <p class="text-xs text-slate-400">Pokročilý systém klimatu</p>
                 </div>
             </div>
-            <button onclick="openRoomModal()" class="bg-cyan-600 hover:bg-cyan-500 text-white px-3.5 py-1.5 rounded-lg text-sm font-semibold transition shadow">
-                <i class="fa-solid fa-plus mr-1"></i> Nová místnost
-            </button>
+            <div class="flex items-center space-x-2">
+                <button onclick="openRoomModal()" class="bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-1.5 rounded-lg text-sm font-semibold transition shadow">
+                    <i class="fa-solid fa-plus mr-1"></i> Nová místnost
+                </button>
+            </div>
         </div>
     </header>
 
     <!-- Hlavní obsah -->
     <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
 
-        <!-- Navigační záložky (Místnosti + Statistiky + Spotřeba + Záloha) -->
-        <div id="navTabsContainer" class="flex space-x-2 overflow-x-auto pb-2 scrollbar-none border-b border-slate-800">
-            <!-- Generováno dynamicky podle místností + statické záložky nakonec -->
+        <!-- Navigační záložky s možností řazení -->
+        <div id="navTabsContainer" class="flex items-center space-x-2 overflow-x-auto pb-2 scrollbar-none border-b border-slate-800">
+            <!-- Generováno dynamicky -->
         </div>
 
-        <!-- Dynamický kontejner pro obsah záložek -->
+        <!-- Obsah záložek -->
         <div id="tabContentContainer">
             <!-- Generováno dynamicky -->
         </div>
@@ -80,15 +81,15 @@
 
     <!-- JavaScript Logika -->
     <script>
-        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V6';
+        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V7';
         const DB_VERSION = 1;
         let db = null;
-        let activeTab = 'room-1'; // Výchozí aktivní záložka
+        let activeTab = 'room-1';
 
         const defaultRooms = [
-            { id: 'room-1', name: 'Koloběžníkův pokoj', initialWater: 34.76 },
-            { id: 'room-2', name: 'Valašský pokoj', initialWater: 9.70 },
-            { id: 'room-3', name: 'Zelený pokoj', initialWater: 2.50 }
+            { id: 'room-1', name: 'Koloběžníkův pokoj', initialWater: 34.76, order: 1, color: '#0ea5e9' },
+            { id: 'room-2', name: 'Valašský pokoj', initialWater: 9.70, order: 2, color: '#10b981' },
+            { id: 'room-3', name: 'Zelený pokoj', initialWater: 2.50, order: 3, color: '#f59e0b' }
         ];
 
         const defaultMeasurements = [
@@ -139,125 +140,152 @@
 
         function openRoomModal() { document.getElementById('roomModal').classList.remove('hidden'); }
         function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+        function switchTab(tabId) { activeTab = tabId; renderApp(); }
 
-        function switchTab(tabId) {
-            activeTab = tabId;
+        // Posun pořadí místnosti (šipky vlevo/vpravo)
+        async function moveRoomOrder(roomId, direction) {
+            const rooms = await getAll('rooms');
+            rooms.sort((a, b) => (a.order || 0) - (b.order || 0));
+            const idx = rooms.findIndex(r => r.id === roomId);
+            if (idx === -1) return;
+
+            const targetIdx = idx + direction;
+            if (targetIdx < 0 || targetIdx >= rooms.length) return;
+
+            // Prohození pořadí
+            const tempOrder = rooms[idx].order || idx;
+            rooms[idx].order = rooms[targetIdx].order || targetIdx;
+            rooms[targetIdx].order = tempOrder;
+
+            await put('rooms', rooms[idx]);
+            await put('rooms', rooms[targetIdx]);
             renderApp();
         }
 
         async function saveRoom(e) {
             e.preventDefault();
+            const rooms = await getAll('rooms');
             const name = document.getElementById('rName').value;
             const initialWater = parseFloat(document.getElementById('rInitialWater').value) || 0;
             const newId = 'room-' + Date.now();
-            await put('rooms', { id: newId, name, initialWater });
+            const colors = ['#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#3b82f6'];
+            const color = colors[rooms.length % colors.length];
+
+            await put('rooms', { id: newId, name, initialWater, order: rooms.length + 1, color });
             closeModal('roomModal');
-            activeTab = newId; // přepnout na novou místnost
+            activeTab = newId;
             renderApp();
         }
 
         async function renderApp() {
             const rooms = await getAll('rooms');
+            rooms.sort((a, b) => (a.order || 0) - (b.order || 0));
             const measurements = await getAll('measurements');
 
-            // Pokud aktivní záložka neexistuje, nastav první místnost
             if (!rooms.some(r => r.id === activeTab) && !['stats', 'power', 'backup'].includes(activeTab)) {
                 activeTab = rooms.length > 0 ? rooms[0].id : 'stats';
             }
 
-            // 1. Vykreslení záložek v horním menu
+            // 1. Vykreslení záložek místností + šipky pro řazení + statické záložky
             const tabsContainer = document.getElementById('navTabsContainer');
-            let tabsHTML = rooms.map(r => `
-                <button onclick="switchTab('${r.id}')" class="tab-btn px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition ${activeTab === r.id ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}">
-                    <i class="fa-solid fa-house-chimney mr-1.5"></i> ${r.name}
-                </button>
+            let tabsHTML = rooms.map((r, idx) => `
+                <div class="flex items-center bg-slate-800/80 rounded-lg border ${activeTab === r.id ? 'border-cyan-500/50 bg-cyan-500/10' : 'border-slate-700'} overflow-hidden">
+                    <button onclick="switchTab('${r.id}')" class="px-3 py-2 font-medium text-sm whitespace-nowrap transition ${activeTab === r.id ? 'text-cyan-400' : 'text-slate-300'}">
+                        <i class="fa-solid fa-house-chimney mr-1" style="color: ${r.color}"></i> ${r.name}
+                    </button>
+                    <div class="flex flex-col border-l border-slate-700 text-[10px]">
+                        <button onclick="moveRoomOrder('${r.id}', -1)" ${idx === 0 ? 'disabled class="opacity-30 cursor-not-allowed"' : ''} class="px-1.5 py-0.5 hover:bg-slate-700 text-slate-400"><i class="fa-solid fa-chevron-left"></i></button>
+                        <button onclick="moveRoomOrder('${r.id}', 1)" ${idx === rooms.length - 1 ? 'disabled class="opacity-30 cursor-not-allowed"' : ''} class="px-1.5 py-0.5 hover:bg-slate-700 text-slate-400"><i class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                </div>
             `).join('');
 
             tabsHTML += `
-                <button onclick="switchTab('stats')" class="tab-btn px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition ${activeTab === 'stats' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}">
-                    <i class="fa-solid fa-chart-pie mr-1.5"></i> Statistiky
+                <button onclick="switchTab('stats')" class="tab-btn px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition ${activeTab === 'stats' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-slate-800'}">
+                    <i class="fa-solid fa-chart-line mr-1.5"></i> Statistiky & Grafy
                 </button>
-                <button onclick="switchTab('power')" class="tab-btn px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition ${activeTab === 'power' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}">
+                <button onclick="switchTab('power')" class="tab-btn px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition ${activeTab === 'power' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-slate-800'}">
                     <i class="fa-solid fa-bolt mr-1.5"></i> Spotřeba
-                </button><button onclick="switchTab('backup')" class="tab-btn px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition ${activeTab === 'backup' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}">
+                </button>
+                <button onclick="switchTab('backup')" class="tab-btn px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition ${activeTab === 'backup' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-slate-800'}">
                     <i class="fa-solid fa-database mr-1.5"></i> Záloha
                 </button>
             `;
             tabsContainer.innerHTML = tabsHTML;
 
-            // 2. Vykreslení obsahu podle aktivní záložky
             const contentContainer = document.getElementById('tabContentContainer');
 
-            if (['stats', 'power', 'backup'].includes(activeTab)) {
-                if (activeTab === 'stats') {
-                    let totalWater = rooms.reduce((sum, r) => sum + (r.initialWater || 0), 0);
-                    measurements.forEach(m => totalWater += (m.waterAdded || 0));
-                    let activeCount = 0;
-                    rooms.forEach(r => {
-                        const rMeas = measurements.filter(m => m.roomId === r.id).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
-                        if (rMeas[0] && rMeas[0].deviceState === 'zapnutý') activeCount++;
-                    });
+            if (activeTab === 'stats') {
+                // Celkové statistiky s barevnými grafy pro všechny místnosti
+                let totalWater = rooms.reduce((sum, r) => sum + (r.initialWater || 0), 0);
+                measurements.forEach(m => totalWater += (m.waterAdded || 0));
 
-                    contentContainer.innerHTML = `
-                        <div class="bg-slate-800 border border-slate-700/80 p-6 rounded-3xl shadow-xl space-y-6">
-                            <h2 class="text-xl font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-chart-pie mr-2"></i> Celkové statistiky domova</h2>
-                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                <div class="bg-slate-900/70 p-4 rounded-2xl border border-slate-700">
-                                    <span class="text-xs text-slate-400 uppercase font-semibold">Celkem vody v domě</span>
-                                    <div class="text-3xl font-bold text-cyan-400 mt-1">${totalWater.toFixed(2)} l</div>
-                                </div>
-                                <div class="bg-slate-900/70 p-4 rounded-2xl border border-slate-700">
-                                    <span class="text-xs text-slate-400 uppercase font-semibold">Aktivní odvlhčovače</span>
-                                    <div class="text-3xl font-bold text-emerald-400 mt-1">${activeCount}</div>
-                                </div>
-                                <div class="bg-slate-900/70 p-4 rounded-2xl border border-slate-700">
-                                    <span class="text-xs text-slate-400 uppercase font-semibold">Počet místností</span>
-                                    <div class="text-3xl font-bold text-slate-100 mt-1">${rooms.length}</div>
-                                </div>
+                contentContainer.innerHTML = `
+                    <div class="space-y-6">
+                        <div class="bg-slate-800 border border-slate-700/80 p-6 rounded-3xl shadow-xl space-y-4">
+                            <h2 class="text-xl font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-chart-pie mr-2"></i> Celkové souhrnné statistiky domova</h2>
+                            <div class="text-2xl font-bold text-cyan-400">Celkem zachyceno vody v domě: ${totalWater.toFixed(2)} l</div>
+                        </div>
+
+                        <!-- Srovnávací grafy -->
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <div class="bg-slate-800 border border-slate-700/80 p-5 rounded-3xl space-y-3">
+                                <h3 class="font-semibold text-slate-200 text-sm"><i class="fa-solid fa-droplet text-cyan-400 mr-1"></i> Srovnání vlhkosti (%)</h3>
+                                <div class="h-64 relative"><canvas id="globalHumChart"></canvas></div>
+                            </div>
+                            <div class="bg-slate-800 border border-slate-700/80 p-5 rounded-3xl space-y-3">
+                                <h3 class="font-semibold text-slate-200 text-sm"><i class="fa-solid fa-water text-blue-400 mr-1"></i> Srovnání vody (l)</h3>
+                                <div class="h-64 relative"><canvas id="globalWaterChart"></canvas></div>
+                            </div>
+                            <div class="bg-slate-800 border border-slate-700/80 p-5 rounded-3xl space-y-3">
+                                <h3 class="font-semibold text-slate-200 text-sm"><i class="fa-solid fa-bolt text-amber-400 mr-1"></i> Srovnání spotřeby (W)</h3>
+                                <div class="h-64 relative"><canvas id="globalPowerChart"></canvas></div>
                             </div>
                         </div>
-                    `;
-                } else if (activeTab === 'power') {
-                    let activeCount = 0;
-                    rooms.forEach(r => {
-                        const rMeas = measurements.filter(m => m.roomId === r.id).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
-                        if (rMeas[0] && rMeas[0].deviceState === 'zapnutý') activeCount++;
-                    });
-                    contentContainer.innerHTML = `
-                        <div class="bg-slate-800 border border-slate-700/80 p-6 rounded-3xl shadow-xl space-y-6">
-                            <h2 class="text-xl font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-bolt mr-2"></i> Odhadovaná spotřeba a náklady</h2>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div class="bg-slate-900/70 p-4 rounded-2xl border border-slate-700 space-y-2">
-                                    <label class="block text-xs font-semibold text-slate-400">Cena elektřiny (Kč / kWh)</label>
-                                    <input type="number" id="elecPriceInput" value="6.0" step="0.1" onchange="updatePowerCost(${activeCount})" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm text-slate-100">
-                                </div>
-                                <div class="bg-slate-900/70 p-4 rounded-2xl border border-slate-700 space-y-2">
-                                    <span class="text-xs font-semibold text-slate-400 block">Odhad nákladů za provoz</span>
-                                    <div id="powerCostOutput" class="text-2xl font-bold text-emerald-400 mt-1">${Math.round((activeCount * 300 * 24 / 1000) * 6)} Kč / den</div>
-                                    <p class="text-[11px] text-slate-500">Příkon kompresoru Comfee: cca 300 W (${activeCount} aktivních zařízení)</p>
-                                </div>
+                    </div>
+                `;
+                setTimeout(() => renderGlobalCharts(rooms, measurements), 50);
+
+            } else if (activeTab === 'power') {
+                let activeCount = 0;
+                rooms.forEach(r => {
+                    const rMeas = measurements.filter(m => m.roomId === r.id).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+                    if (rMeas[0] && rMeas[0].deviceState === 'zapnutý') activeCount++;
+                });
+                contentContainer.innerHTML = `
+                    <div class="bg-slate-800 border border-slate-700/80 p-6 rounded-3xl shadow-xl space-y-6">
+                        <h2 class="text-xl font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-bolt mr-2"></i> Odhadovaná spotřeba a náklady</h2>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div class="bg-slate-900/70 p-4 rounded-2xl border border-slate-700 space-y-2">
+                                <label class="block text-xs font-semibold text-slate-400">Cena elektřiny (Kč / kWh)</label>
+                                <input type="number" id="elecPriceInput" value="6.0" step="0.1" onchange="updatePowerCost(${activeCount})" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm text-slate-100">
+                            </div>
+                            <div class="bg-slate-900/70 p-4 rounded-2xl border border-slate-700 space-y-2">
+                                <span class="text-xs font-semibold text-slate-400 block">Odhad nákladů za provoz</span>
+                                <div id="powerCostOutput" class="text-2xl font-bold text-emerald-400 mt-1">${Math.round((activeCount * 300 * 24 / 1000) * 6)} Kč / den</div>
+                                <p class="text-[11px] text-slate-500">Příkon kompresoru Comfee: cca 300 W (${activeCount} aktivních zařízení)</p>
                             </div>
                         </div>
-                    `;
-                } else if (activeTab === 'backup') {
-                    contentContainer.innerHTML = `
-                        <div class="bg-slate-800 border border-slate-700/80 p-6 rounded-3xl shadow-xl space-y-6">
-                            <h2 class="text-xl font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-database mr-2"></i> Záloha a obnova dat</h2>
-                            <p class="text-xs text-slate-300">Všechna data se ukládají lokálně do tvého zařízení.</p>
-                            <div class="flex flex-wrap gap-4 pt-2">
-                                <button onclick="exportJSON()" class="bg-slate-700 hover:bg-slate-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition shadow flex items-center space-x-2">
-                                    <i class="fa-solid fa-download"></i> <span>Stáhnout zálohu (JSON)</span>
-                                </button>
-                                <label class="bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition shadow flex items-center space-x-2 cursor-pointer">
-                                    <i class="fa-solid fa-upload"></i> <span>Obnovit ze zálohy</span>
-                                    <input type="file" id="importFile" accept=".json" onchange="importJSON(event)" class="hidden">
-                                </label>
-                            </div>
+                    </div>
+                `;
+            } else if (activeTab === 'backup') {
+                contentContainer.innerHTML = `
+                    <div class="bg-slate-800 border border-slate-700/80 p-6 rounded-3xl shadow-xl space-y-6">
+                        <h2 class="text-xl font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-database mr-2"></i> Záloha a obnova dat</h2>
+                        <p class="text-xs text-slate-300">Všechna data se ukládají lokálně do tvého zařízení.</p>
+                        <div class="flex flex-wrap gap-4 pt-2">
+                            <button onclick="exportJSON()" class="bg-slate-700 hover:bg-slate-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition shadow flex items-center space-x-2">
+                                <i class="fa-solid fa-download"></i> <span>Stáhnout zálohu (JSON)</span>
+                            </button>
+                            <label class="bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition shadow flex items-center space-x-2 cursor-pointer">
+                                <i class="fa-solid fa-upload"></i> <span>Obnovit ze zálohy</span>
+                                <input type="file" id="importFile" accept=".json" onchange="importJSON(event)" class="hidden">
+                            </label>
                         </div>
-                    `;
-                }
+                    </div>
+                `;
             } else {
-                // Zobrazení konkrétní místnosti
+                // Karta místnosti
                 const r = rooms.find(room => room.id === activeTab);
                 if (!r) return;
 
@@ -273,7 +301,7 @@
                     <div class="bg-slate-800 border border-slate-700/80 p-5 rounded-3xl shadow-xl space-y-6">
                         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-700 pb-4">
                             <div>
-                                <h2 class="text-xl font-bold text-cyan-400 flex items-center">
+                                <h2 class="text-xl font-bold flex items-center" style="color: ${r.color}">
                                     <i class="fa-solid fa-house-chimney mr-2"></i> ${r.name}
                                 </h2>
                                 <p class="text-xs text-slate-400">Poslední akce: ${new Date(latest.timestamp).toLocaleString('cs-CZ')}</p>
@@ -291,7 +319,7 @@
                         <!-- 4 KOUTY DLE NÁKRESU -->
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             
-                            <!-- 1. VLEVO NAHOŘE: BUDÍK TEPLOTA S RAFIČKOU -->
+                            <!-- 1. VLEVO NAHOŘE: BUDÍK TEPLOTA (POSUVNÍK + RUČNÍ ZÁPIS) -->
                             <div class="bg-slate-900/70 border border-slate-700/60 p-4 rounded-2xl space-y-3 text-center">
                                 <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block"><i class="fa-solid fa-temperature-three-quarters text-emerald-400 mr-1"></i> Teplota (Budík)</span>
                                 <div class="gauge-container">
@@ -299,16 +327,19 @@
                                         <div class="gauge-needle" id="needle-temp-${r.id}" style="transform: rotate(${tempAngle}deg);"></div>
                                     </div>
                                 </div>
-                                <div id="temptext-${r.id}" class="text-xl font-bold text-emerald-400">${latest.temperature} °C</div>
-                                <div class="space-y-1">
+                                <div class="text-xl font-bold text-emerald-400">${latest.temperature} °C</div>
+                                <div class="space-y-2">
                                     <input type="range" min="0" max="40" step="0.5" value="${latest.temperature}" 
-                                        oninput="moveNeedle('${r.id}', 'temp', this.value); document.getElementById('temptext-${r.id}').innerText = this.value + ' °C';" 
+                                        oninput="moveNeedle('${r.id}', 'temp', this.value); this.nextElementSibling.value = this.value;" 
                                         onchange="updateMetric('${r.id}', 'temperature', this.value)" class="w-full">
-                                    <input type="number" step="0.5" value="${latest.temperature}" onchange="updateMetric('${r.id}', 'temperature', this.value)" class="w-24 bg-slate-800 border border-slate-700 text-center text-sm rounded-lg p-1 text-slate-100 mx-auto">
+                                    <div class="flex justify-center items-center space-x-2">
+                                        <input type="number" step="0.5" value="${latest.temperature}" id="input-temp-${r.id}" class="w-24 bg-slate-800 border border-slate-700 text-center text-sm rounded-lg p-1 text-slate-100">
+                                        <button onclick="updateMetric('${r.id}', 'temperature', document.getElementById('input-temp-${r.id}').value)" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg">Zapsat</button>
+                                    </div>
                                 </div>
                             </div>
 
-                            <!-- 2. VPRAVO NAHOŘE: BUDÍK VLHKOST S RAFIČKOU -->
+                            <!-- 2. VPRAVO NAHOŘE: BUDÍK VLHKOST (POSUVNÍK + RUČNÍ ZÁPIS) -->
                             <div class="bg-slate-900/70 border border-slate-700/60 p-4 rounded-2xl space-y-3 text-center">
                                 <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block"><i class="fa-solid fa-droplet text-cyan-400 mr-1"></i> Vlhkost (Budík)</span>
                                 <div class="gauge-container">
@@ -316,12 +347,15 @@
                                         <div class="gauge-needle" id="needle-hum-${r.id}" style="transform: rotate(${humAngle}deg);"></div>
                                     </div>
                                 </div>
-                                <div id="humtext-${r.id}" class="text-xl font-bold text-cyan-400">${latest.humidity} %</div>
-                                <div class="space-y-1">
+                                <div class="text-xl font-bold text-cyan-400">${latest.humidity} %</div>
+                                <div class="space-y-2">
                                     <input type="range" min="20" max="90" step="1" value="${latest.humidity}" 
-                                        oninput="moveNeedle('${r.id}', 'hum', this.value); document.getElementById('humtext-${r.id}').innerText = this.value + ' %';" 
+                                        oninput="moveNeedle('${r.id}', 'hum', this.value); this.nextElementSibling.value = this.value;" 
                                         onchange="updateMetric('${r.id}', 'humidity', this.value)" class="w-full">
-                                    <input type="number" step="1" value="${latest.humidity}" onchange="updateMetric('${r.id}', 'humidity', this.value)" class="w-24 bg-slate-800 border border-slate-700 text-center text-sm rounded-lg p-1 text-slate-100 mx-auto">
+                                    <div class="flex justify-center items-center space-x-2">
+                                        <input type="number" step="1" value="${latest.humidity}" id="input-hum-${r.id}" class="w-24 bg-slate-800 border border-slate-700 text-center text-sm rounded-lg p-1 text-slate-100">
+                                        <button onclick="updateMetric('${r.id}', 'humidity', document.getElementById('input-hum-${r.id}').value)" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg">Zapsat</button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -356,11 +390,10 @@
                     </div>
                 `;
 
-                setTimeout(() => renderRoomChart(r.id, rMeas), 50);
+                setTimeout(() => renderRoomChart(r.id, rMeas, r.color), 50);
             }
         }
 
-        // Plynulý pohyb rafičky budíku prstem
         function moveNeedle(roomId, type, val) {
             const needle = document.getElementById(`needle-${type}-${roomId}`);
             if (!needle) return;
@@ -391,6 +424,7 @@
         }
 
         async function updateMetric(roomId, field, value) {
+            if (value === '' || isNaN(value)) return;
             const measurements = await getAll('measurements');
             const rMeas = measurements.filter(m => m.roomId === roomId).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
             const last = rMeas[0] || { deviceState: 'vypnutý', humidity: 55, temperature: 21 };
@@ -432,7 +466,7 @@
             document.getElementById('powerCostOutput').innerText = Math.round(dailyKWh * price) + ' Kč / den';
         }
 
-        function renderRoomChart(roomId, rMeasurements) {
+        function renderRoomChart(roomId, rMeasurements, color) {
             const canvas = document.getElementById(`chart-${roomId}`);
             if (!canvas) return;
             const ctx = canvas.getContext('2d');
@@ -442,13 +476,71 @@
                 type: 'line',
                 data: {
                     labels: rMeasurements.map(m => new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
-                    datasets: [{ data: rMeasurements.map(m => m.humidity), borderColor: '#0ea5e9', backgroundColor: 'rgba(14, 165, 233, 0.1)', fill: true, tension: 0.3, pointRadius: 2 }]
+                    datasets: [{ data: rMeasurements.map(m => m.humidity), borderColor: color, backgroundColor: color + '22', fill: true, tension: 0.3, pointRadius: 2 }]
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: { x: { display: false }, y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: '#334155' }, min: 20, max: 90 } }
                 }
+            });
+        }
+
+        function renderGlobalCharts(rooms, measurements) {
+            // Seskupení dat pro globální grafy
+            const labels = [...new Set(measurements.map(m => new Date(m.timestamp).toLocaleDateString()))].slice(-7);
+
+            // 1. Vlhkost
+            const humCtx = document.getElementById('globalHumChart').getContext('2d');
+            new Chart(humCtx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: rooms.map(r => ({
+                        label: r.name,
+                        data: labels.map(date => {
+                            const found = measurements.filter(m => m.roomId === r.id && new Date(m.timestamp).toLocaleDateString() === date);
+                            return found.length > 0 ? found[found.length - 1].humidity : null;
+                        }),
+                        borderColor: r.color,
+                        tension: 0.3,
+                        spanGaps: true
+                    }))
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#cbd5e1', boxWidth: 12 } } }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' }, min: 20, max: 90 } } }
+            });
+
+            // 2. Voda
+            const waterCtx = document.getElementById('globalWaterChart').getContext('2d');
+            new Chart(waterCtx, {
+                type: 'bar',
+                data: {
+                    labels: rooms.map(r => r.name),
+                    datasets: [{
+                        label: 'Zachycená voda (l)',
+                        data: rooms.map(r => (r.initialWater || 0) + measurements.filter(m => m.roomId === r.id).reduce((s, m) => s + (m.waterAdded || 0), 0)),
+                        backgroundColor: rooms.map(r => r.color)
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' } } } }
+            });
+
+            // 3. Spotřeba W
+            const powerCtx = document.getElementById('globalPowerChart').getContext('2d');
+            new Chart(powerCtx, {
+                type: 'bar',
+                data: {
+                    labels: rooms.map(r => r.name),
+                    datasets: [{
+                        label: 'Příkon (W)',
+                        data: rooms.map(r => {
+                            const rMeas = measurements.filter(m => m.roomId === r.id).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+                            return (rMeas[0] && rMeas[0].deviceState === 'zapnutý') ? 300 : 0;
+                        }),
+                        backgroundColor: rooms.map(r => r.color)
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' }, max: 350 } } }
             });
         }
 
