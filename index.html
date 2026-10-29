@@ -81,11 +81,11 @@
 
     <!-- JavaScript Logika -->
     <script>
-        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V9';
+        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V10';
         const DB_VERSION = 1;
         let db = null;
         let activeTab = 'room-1';
-        let currentElectricityPrice = 6.0; // Výchozí cena Kč/kWh
+        let currentElectricityPrice = 6.0; // Kč / kWh
 
         const defaultRooms = [
             { id: 'room-1', name: 'Koloběžníkův pokoj', initialWater: 34.76, order: 1, color: '#0ea5e9' },
@@ -94,9 +94,10 @@
         ];
 
         const defaultMeasurements = [
-            { roomId: 'room-1', timestamp: new Date().toISOString(), humidity: 63, temperature: 21.0, deviceState: 'vypnutý', waterAdded: 0, note: 'Výchozí' },
-            { roomId: 'room-2', timestamp: new Date().toISOString(), humidity: 50, temperature: 20.0, deviceState: 'zapnutý', waterAdded: 0, note: 'Výchozí' },
-            { roomId: 'room-3', timestamp: new Date().toISOString(), humidity: 41, temperature: 20.0, deviceState: 'zapnutý', waterAdded: 0, note: 'Výchozí' }
+            { roomId: 'room-1', timestamp: new Date(Date.now() - 3600000*2).toISOString(), humidity: 63, temperature: 21.0, deviceState: 'zapnutý', waterAdded: 0, note: 'Start běhu' },
+            { roomId: 'room-1', timestamp: new Date().toISOString(), humidity: 55, temperature: 21.0, deviceState: 'vypnutý', waterAdded: 0, note: 'Konec běhu' },
+            { roomId: 'room-2', timestamp: new Date().toISOString(), humidity: 50, temperature: 20.0, deviceState: 'zapnutý', waterAdded: 0, note: 'Běží' },
+            { roomId: 'room-3', timestamp: new Date().toISOString(), humidity: 41, temperature: 20.0, deviceState: 'zapnutý', waterAdded: 0, note: 'Běží' }
         ];
 
         function initDB() {
@@ -176,6 +177,40 @@
             renderApp();
         }
 
+        // Výpočet spotřebované energie a ceny z historie zapnuto/vypnuto
+        function calculateRoomEnergy(rMeasurements) {
+            rMeasurements.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
+            let totalHours = 0;
+            let lastOnTime = null;
+
+            rMeasurements.forEach(m => {
+                if (m.deviceState === 'zapnutý') {
+                    if (!lastOnTime) lastOnTime = new Date(m.timestamp);
+                } else if (m.deviceState === 'vypnutý') {
+                    if (lastOnTime) {
+                        const offTime = new Date(m.timestamp);
+                        totalHours += (offTime - lastOnTime) / (1000 * 60 * 60);
+                        lastOnTime = null;
+                    }
+                }
+            });
+
+            // Pokud svítí stále zapnuto, připočteme čas do teď
+            if (lastOnTime) {
+                totalHours += (new Date() - lastOnTime) / (1000 * 60 * 60);
+            }
+
+            const powerKW = 300 / 1000; // 300 W
+            const totalKWh = totalHours * powerKW;
+            const totalPrice = totalKWh * currentElectricityPrice;
+
+            return {
+                hours: totalHours.toFixed(1),
+                kWh: totalKWh.toFixed(2),
+                price: totalPrice.toFixed(1)
+            };
+        }
+
         async function renderApp() {
             const rooms = await getAll('rooms');
             rooms.sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -185,7 +220,7 @@
                 activeTab = rooms.length > 0 ? rooms[0].id : 'stats';
             }
 
-            // 1. Horní záložky se stavem zapnuto/vypnuto (tečka)
+            // 1. Horní záložky
             const tabsContainer = document.getElementById('navTabsContainer');
             let tabsHTML = rooms.map((r, idx) => {
                 const rMeas = measurements.filter(m => m.roomId === r.id).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -195,7 +230,7 @@
                 return `
                     <div class="flex items-center bg-slate-800/90 rounded-xl border ${activeTab === r.id ? 'border-cyan-500 bg-cyan-500/15' : 'border-slate-700'} shrink-0 overflow-hidden shadow-sm">
                         <button onclick="switchTab('${r.id}')" class="px-3 py-2 font-semibold text-xs whitespace-nowrap transition ${activeTab === r.id ? 'text-cyan-400' : 'text-slate-300'} flex items-center space-x-2">
-                            <span class="w-2.5 h-2.5 rounded-full ${dotColor}" title="${isRunning ? 'Zapnuto' : 'Vypnuto'}"></span>
+                            <span class="w-2.5 h-2.5 rounded-full ${dotColor}"></span>
                             <span>${r.name}</span>
                         </button>
                         <div class="flex flex-col border-l border-slate-700/80 text-[9px] bg-slate-900/40">
@@ -208,7 +243,7 @@
 
             tabsHTML += `
                 <button onclick="switchTab('stats')" class="px-3.5 py-2 rounded-xl font-semibold text-xs whitespace-nowrap shrink-0 transition ${activeTab === 'stats' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' : 'bg-slate-800 text-slate-300 border border-slate-700'}">
-                    <i class="fa-solid fa-chart-line mr-1"></i> Statistiky & Grafy
+                    <i class="fa-solid fa-chart-line mr-1"></i> Hromadné statistiky
                 </button>
                 <button onclick="switchTab('backup')" class="px-3.5 py-2 rounded-xl font-semibold text-xs whitespace-nowrap shrink-0 transition ${activeTab === 'backup' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' : 'bg-slate-800 text-slate-300 border border-slate-700'}">
                     <i class="fa-solid fa-database mr-1"></i> Záloha
@@ -219,33 +254,33 @@
             const contentContainer = document.getElementById('tabContentContainer');
 
             if (activeTab === 'stats') {
-                // Hromadné statistiky domova a barevné grafy
+                // Hromadné statistiky a srovnávací grafy
                 let totalWater = rooms.reduce((sum, r) => sum + (r.initialWater || 0), 0);
                 measurements.forEach(m => totalWater += (m.waterAdded || 0));
-                let activeCount = 0;
+                
+                let houseTotalKWh = 0;
+                let houseTotalPrice = 0;
                 rooms.forEach(r => {
-                    const rMeas = measurements.filter(m => m.roomId === r.id).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
-                    if (rMeas[0] && rMeas[0].deviceState === 'zapnutý') activeCount++;
+                    const rMeas = measurements.filter(m => m.roomId === r.id);
+                    const stats = calculateRoomEnergy(rMeas);
+                    houseTotalKWh += parseFloat(stats.kWh);
+                    houseTotalPrice += parseFloat(stats.price);
                 });
-
-                const totalKW = (activeCount * 300) / 1000;
-                const totalDayCost = totalKW * 24 * currentElectricityPrice;
 
                 contentContainer.innerHTML = `
                     <div class="space-y-6">
-                        <!-- Celkové souhrnné karty -->
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div class="bg-slate-800 border border-slate-700/80 p-5 rounded-3xl shadow-xl">
-                                <span class="text-xs font-semibold text-slate-400 uppercase">Celkem vody v domě</span>
+                                <span class="text-xs font-semibold text-slate-400 uppercase">Voda v celém domě</span>
                                 <div class="text-3xl font-bold text-cyan-400 mt-1">${totalWater.toFixed(2)} l</div>
                             </div>
                             <div class="bg-slate-800 border border-slate-700/80 p-5 rounded-3xl shadow-xl">
-                                <span class="text-xs font-semibold text-slate-400 uppercase">Aktivní odvlhčovače</span>
-                                <div class="text-3xl font-bold text-emerald-400 mt-1">${activeCount} / ${rooms.length}</div>
+                                <span class="text-xs font-semibold text-slate-400 uppercase">Hromadná spotřeba</span>
+                                <div class="text-3xl font-bold text-amber-400 mt-1">${houseTotalKWh.toFixed(2)} kWh</div>
                             </div>
                             <div class="bg-slate-800 border border-slate-700/80 p-5 rounded-3xl shadow-xl">
-                                <span class="text-xs font-semibold text-slate-400 uppercase">Odhad nákladů za den</span>
-                                <div class="text-3xl font-bold text-amber-400 mt-1">${Math.round(totalDayCost)} Kč</div>
+                                <span class="text-xs font-semibold text-slate-400 uppercase">Celková cena za energii</span>
+                                <div class="text-3xl font-bold text-emerald-400 mt-1">${Math.round(houseTotalPrice)} Kč</div>
                             </div>
                         </div>
 
@@ -260,7 +295,7 @@
                                 <div class="h-64 relative"><canvas id="globalWaterChart"></canvas></div>
                             </div>
                             <div class="bg-slate-800 border border-slate-700/80 p-5 rounded-3xl space-y-3">
-                                <h3 class="font-semibold text-slate-200 text-sm"><i class="fa-solid fa-bolt text-amber-400 mr-1"></i> Srovnání spotřeby (W)</h3>
+                                <h3 class="font-semibold text-slate-200 text-sm"><i class="fa-solid fa-bolt text-amber-400 mr-1"></i> Srovnání spotřeby (kWh)</h3>
                                 <div class="h-64 relative"><canvas id="globalPowerChart"></canvas></div>
                             </div>
                         </div>
@@ -285,7 +320,6 @@
                     </div>
                 `;
             } else {
-                // Karta místnosti (včetně lokálních statistik spotřeby a ceny)
                 const r = rooms.find(room => room.id === activeTab);
                 if (!r) return;
 
@@ -294,15 +328,13 @@
                 const totalWater = (r.initialWater || 0) + rMeas.reduce((sum, m) => sum + (m.waterAdded || 0), 0);
                 const isRunning = latest.deviceState === 'zapnutý';
 
-                const roomPowerW = isRunning ? 300 : 0;
-                const roomDayCost = (300 / 1000) * 24 * currentElectricityPrice;
+                const energyStats = calculateRoomEnergy(rMeas);
 
                 const tempAngle = Math.min(Math.max((latest.temperature / 40) * 180 - 90, -90), 90);
                 const humAngle = Math.min(Math.max(((latest.humidity - 20) / 70) * 180 - 90, -90), 90);
 
                 contentContainer.innerHTML = `
                     <div class="bg-slate-800 border border-slate-700/80 p-5 rounded-3xl shadow-xl space-y-6">
-                        <!-- Hlavička místnosti + stav + nastavení ceny elektřiny -->
                         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-700 pb-4">
                             <div>
                                 <h2 class="text-xl font-bold flex items-center" style="color: ${r.color}">
@@ -326,17 +358,21 @@
                         </div>
 
                         <!-- LOKÁLNÍ STATISTIKA MÍSTNOSTI (Spotřeba, Cena, Voda) -->
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-700/50">
+                        <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-700/50">
                             <div>
-                                <span class="text-[11px] uppercase font-semibold text-slate-400">Okamžitý příkon</span>
-                                <div class="text-lg font-bold text-amber-400 mt-0.5">${roomPowerW} W</div>
+                                <span class="text-[11px] uppercase font-semibold text-slate-400">Běžící čas</span>
+                                <div class="text-lg font-bold text-slate-100 mt-0.5">${energyStats.hours} hod</div>
                             </div>
                             <div>
-                                <span class="text-[11px] uppercase font-semibold text-slate-400">Náklad při běhu (24h)</span>
-                                <div class="text-lg font-bold text-emerald-400 mt-0.5">${isRunning ? Math.round(roomDayCost) + ' Kč' : '0 Kč (vypnuto)'}</div>
+                                <span class="text-[11px] uppercase font-semibold text-slate-400">Spotřeba energie</span>
+                                <div class="text-lg font-bold text-amber-400 mt-0.5">${energyStats.kWh} kWh</div>
                             </div>
                             <div>
-                                <span class="text-[11px] uppercase font-semibold text-slate-400">Celkem vody v místnosti</span>
+                                <span class="text-[11px] uppercase font-semibold text-slate-400">Cena za provoz</span>
+                                <div class="text-lg font-bold text-emerald-400 mt-0.5">${energyStats.price} Kč</div>
+                            </div>
+                            <div>
+                                <span class="text-[11px] uppercase font-semibold text-slate-400">Zachycená voda</span>
                                 <div class="text-lg font-bold text-cyan-400 mt-0.5">${totalWater.toFixed(2)} l</div>
                             </div>
                         </div>
@@ -547,15 +583,15 @@
                 data: {
                     labels: rooms.map(r => r.name),
                     datasets: [{
-                        label: 'Příkon (W)',
+                        label: 'Spotřeba (kWh)',
                         data: rooms.map(r => {
-                            const rMeas = measurements.filter(m => m.roomId === r.id).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
-                            return (rMeas[0] && rMeas[0].deviceState === 'zapnutý') ? 300 : 0;
+                            const rMeas = measurements.filter(m => m.roomId === r.id);
+                            return parseFloat(calculateRoomEnergy(rMeas).kWh);
                         }),
                         backgroundColor: rooms.map(r => r.color)
                     }]
                 },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' }, max: 350 } } }
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' } } } }
             });
         }
 
