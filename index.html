@@ -81,7 +81,7 @@
 
     <!-- JavaScript Logika -->
     <script>
-        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V18';
+        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V19';
         const DB_VERSION = 1;
         let db = null;
         let activeTab = 'room-1';
@@ -136,6 +136,7 @@
 
         function put(storeName, item) {
             return new Promise((resolve, reject) => {
+                if (!db) return reject(new Error('DB není otevřená'));
                 const transaction = db.transaction(storeName, 'readwrite');
                 const store = transaction.objectStore(storeName);
                 const request = store.put(item);
@@ -149,12 +150,15 @@
 
         async function createLocalStorageBackup() {
             if (!db) return;
-            const rooms = await getAll('rooms');
-            const measurements = await getAll('measurements');
-            localStorage.setItem('kolobeznik_backup_safe', JSON.stringify({ rooms, measurements }));
+            try {
+                const rooms = await getAll('rooms');
+                const measurements = await getAll('measurements');
+                localStorage.setItem('kolobeznik_backup_safe', JSON.stringify({ rooms, measurements }));
+            } catch(e) {}
         }
 
         async function restoreFromLocalStorageBackup() {
+            if (!db) return;
             const saved = localStorage.getItem('kolobeznik_backup_safe');
             if (!saved) return;
             try {
@@ -162,7 +166,7 @@
                 const rooms = await getAll('rooms');
                 if (rooms.length === 0 && data.rooms) {
                     for (let r of data.rooms) await put('rooms', r);
-                    for (let m of data.measurements) await put('measurements', m);
+                    if (data.measurements) for (let m of data.measurements) await put('measurements', m);
                 }
             } catch (e) { console.error(e); }
         }
@@ -200,7 +204,6 @@
             renderApp();
         }
 
-        // NETATMO: OTEVŘENÍ AUTORIZACE V PROHLÍŽEČI
         function startNetatmoAuth() {
             const clientId = document.getElementById('netatmoClientId').value;
             if (!clientId) {
@@ -211,7 +214,6 @@
             window.location.href = authUrl;
         }
 
-        // NETATMO: VÝMĚNA URL ADRESY ZA REFRESH TOKEN
         async function exchangeNetatmoCode() {
             const clientId = document.getElementById('netatmoClientId').value;
             const clientSecret = document.getElementById('netatmoClientSecret').value;
@@ -263,11 +265,10 @@
             }
         }
 
-        // NETATMO: STAŽENÍ DAT PRO KOLOBĚŽNÍKŮV POKOJ
         async function syncNetatmoForRoom(roomId) {
-            const clientId = localStorage.getItem('netatmo_client_id') || document.getElementById('netatmoClientId').value;
-            const clientSecret = localStorage.getItem('netatmo_client_secret') || document.getElementById('netatmoClientSecret').value;
-            const refreshToken = localStorage.getItem('netatmo_refresh_token') || document.getElementById('netatmoRefreshToken').value;
+            const clientId = localStorage.getItem('netatmo_client_id') || document.getElementById('netatmoClientId')?.value;
+            const clientSecret = localStorage.getItem('netatmo_client_secret') || document.getElementById('netatmoClientSecret')?.value;
+            const refreshToken = localStorage.getItem('netatmo_refresh_token') || document.getElementById('netatmoRefreshToken')?.value;
 
             if (!clientId || !clientSecret || !refreshToken) {
                 alert('Nejprve nastavte Netatmo API v záložce "Záloha & API"!');
@@ -740,3 +741,19 @@
                 if (data.rooms) for (let r of data.rooms) await put('rooms', r);
                 if (data.measurements) for (let m of data.measurements) await put('measurements', m);
                 alert('Záloha úspěšně obnovena!');
+                renderApp();
+            };
+            reader.readAsText(file);
+        }
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                await initDB();
+                await renderApp();
+            } catch (err) {
+                console.error('Chyba při startu:', err);
+            }
+        });
+    </script>
+</body>
+</html>
