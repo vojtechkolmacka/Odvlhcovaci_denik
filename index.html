@@ -81,7 +81,7 @@
 
     <!-- JavaScript Logika -->
     <script>
-        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V14';
+        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V15';
         const DB_VERSION = 1;
         let db = null;
         let activeTab = 'room-1';
@@ -225,7 +225,7 @@
                         hum = humVal.getUint16(0, true) / 100.0;
                     } catch(e) {}
                 } catch(e) {
-                    alert('Zařízení je připojené, ale služba nebyla plně detekována. Hodnoty zůstávají.');
+                    alert('Zařízení je připojené, ale služba nebyla plně detekována.');
                 }
 
                 const measurements = await getAll('measurements');
@@ -275,12 +275,11 @@
                 const urlObj = new URL(fullUrlInput);
                 code = urlObj.searchParams.get('code');
             } catch(e) {
-                // Pokud uživatel zkopíroval jen samotný kód
                 code = fullUrlInput.trim();
             }
 
             if (!code) {
-                alert nepodařilo se najít kód v URL adrese!;
+                alert('Nepodařilo se najít kód v URL adrese!');
                 return;
             }
 
@@ -421,7 +420,7 @@
                     <i class="fa-solid fa-chart-line mr-1"></i> Statistiky & Grafy
                 </button>
                 <button onclick="switchTab('backup')" class="px-3.5 py-2 rounded-xl font-semibold text-xs whitespace-nowrap shrink-0 transition ${activeTab === 'backup' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' : 'bg-slate-800 text-slate-300 border border-slate-700'}">
-                    <i class="fa-solid  fa-database mr-1"></i> Záloha & API
+                    <i class="fa-solid fa-database mr-1"></i> Záloha & API
                 </button>
             `;
             tabsContainer.innerHTML = tabsHTML;
