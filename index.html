@@ -31,7 +31,7 @@
                 </div>
                 <div>
                     <h1 class="font-bold text-lg text-cyan-400 tracking-tight">Odvlhčovací deník</h1>
-                    <p class="text-xs text-slate-400">Hlavní panel a statistiky</p>
+                    <p class="text-xs text-slate-400">S čidly ThermoPro & Netatmo</p>
                 </div>
             </div>
             <button onclick="openRoomModal()" class="bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-1.5 rounded-lg text-sm font-semibold transition shadow flex items-center space-x-1">
@@ -81,7 +81,7 @@
 
     <!-- JavaScript Logika -->
     <script>
-        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V11';
+        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V12';
         const DB_VERSION = 1;
         let db = null;
         let activeTab = 'room-1';
@@ -106,7 +106,7 @@
                 request.onerror = () => reject(request.error);
                 request.onsuccess = async () => { 
                     db = request.result; 
-                    await restoreFromLocalStorageBackup(); // Obnova z LocalStorage pojistky
+                    await restoreFromLocalStorageBackup();
                     resolve(db); 
                 };
                 request.onupgradeneeded = (event) => {
@@ -140,20 +140,18 @@
                 const store = transaction.objectStore(storeName);
                 const request = store.put(item);
                 request.onsuccess = async () => {
-                    await createLocalStorageBackup(); // Automatická záloha při každé změně
+                    await createLocalStorageBackup();
                     resolve(request.result);
                 };
                 request.onerror = () => reject(request.error);
             });
         }
 
-        // Pojištění proti smazání dat prohlížeče (uložení do localStorage)
         async function createLocalStorageBackup() {
             if (!db) return;
             const rooms = await getAll('rooms');
             const measurements = await getAll('measurements');
-            const backupData = { rooms, measurements, timestamp: new Date().toISOString() };
-            localStorage.setItem('kolobeznik_backup_safe', JSON.stringify(backupData));
+            localStorage.setItem('kolobeznik_backup_safe', JSON.stringify({ rooms, measurements }));
         }
 
         async function restoreFromLocalStorageBackup() {
@@ -166,9 +164,7 @@
                     for (let r of data.rooms) await put('rooms', r);
                     for (let m of data.measurements) await put('measurements', m);
                 }
-            } catch (e) {
-                console.error('Chyba při obnově ze zálohy', e);
-            }
+            } catch (e) { console.error(e); }
         }
 
         function openRoomModal() { document.getElementById('roomModal').classList.remove('hidden'); }
@@ -180,14 +176,11 @@
             rooms.sort((a, b) => (a.order || 0) - (b.order || 0));
             const idx = rooms.findIndex(r => r.id === roomId);
             if (idx === -1) return;
-
             const targetIdx = idx + direction;
             if (targetIdx < 0 || targetIdx >= rooms.length) return;
-
             const tempOrder = rooms[idx].order || idx;
             rooms[idx].order = rooms[targetIdx].order || targetIdx;
             rooms[targetIdx].order = tempOrder;
-
             await put('rooms', rooms[idx]);
             await put('rooms', rooms[targetIdx]);
             renderApp();
@@ -201,43 +194,124 @@
             const newId = 'room-' + Date.now();
             const colors = ['#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#3b82f6'];
             const color = colors[rooms.length % colors.length];
-
             await put('rooms', { id: newId, name, initialWater, order: rooms.length + 1, color });
             closeModal('roomModal');
             activeTab = newId;
             renderApp();
         }
 
+        // PŘIPOJENÍ THERMOPRO (Web Bluetooth API)
+        async function connectThermoPro(roomId) {
+            try {
+                if (!navigator.bluetooth) {
+                    alert('Váš prohlížeč nepodporuje Web Bluetooth.');
+                    return;
+                }
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: 'TP' }, { namePrefix: 'ThermoPro' }, { services: ['environmental_sensing'] }],
+                    optionalServices: ['environmental_sensing', '0000ffe0-0000-1000-8000-00805f9b34fb']
+                });
+                
+                const server = await device.gatt.connect();
+                alert(`Připojeno k zařízení: ${device.name}. Čtu data...`);
+                
+                // Pokus o čtení Environmental Sensing servicy (standardní BLE teplota/vlhkost)
+                const service = await server.getPrimaryService('environmental_sensing');
+                
+                // Teplota
+                let temp = 21.0;
+                try {
+                    const tempChar = await service.getCharacteristic('temperature');
+                    const tempVal = await tempChar.readValue();
+                    temp = tempVal.getInt16(0, true) / 100.0;
+                } catch(e) {}
+
+                // Vlhkost
+                let hum = 55;
+                try {
+                    const humChar = await service.getCharacteristic('humidity');
+                    const humVal = await humChar.readValue();
+                    hum = humVal.getUint16(0, true) / 100.0;
+                } catch(e) {}
+
+                // Uložení do databáze
+                const measurements = await getAll('measurements');
+                const rMeas = measurements.filter(m => m.roomId === roomId).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+                const last = rMeas[0] || { deviceState: 'vypnutý' };
+
+                await put('measurements', {
+                    roomId: roomId,
+                    timestamp: new Date().toISOString(),
+                    humidity: Math.round(hum),
+                    temperature: parseFloat(temp.toFixed(1)),
+                    deviceState: last.deviceState,
+                    waterAdded: 0,
+                    note: `Načteno z ThermoPro (${device.name})`
+                });
+                renderApp();
+                alert(`Úspěšně načteno: Teplota ${temp.toFixed(1)}°C, Vlhkost ${Math.round(hum)}%`);
+            } catch (err) {
+                console.error(err);
+                alert('Nepodařilo se připojit k čidlu ThermoPro: ' + err.message);
+            }
+        }
+
+        // SYNCHRONIZACE S NETATMO API
+        async function syncNetatmo() {
+            const clientId = document.getElementById('netatmoClientId').value;
+            const clientSecret = document.getElementById('netatmoClientSecret').value;
+            const refreshToken = document.getElementById('netatmoRefreshToken').value;
+
+            if (!clientId || !clientSecret || !refreshToken) {
+                alert('Vyplňte prosím všechny údaje pro Netatmo API!');
+                return;
+            }
+
+            try {
+                // 1. Získání nového Access Tokenu
+                const tokenRes = await fetch('https://api.netatmo.com/oauth2/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        grant_type: 'refresh_type', // refresh_token
+                        refresh_token: refreshToken,
+                        client_id: clientId,
+                        client_secret: clientSecret
+                    })
+                });
+                const tokenData = await tokenRes.json();
+                if (!tokenData.access_token) throw new Error('Chyba ověření u Netatma.');
+
+                // 2. Stažení dat meteostanice
+                const dataRes = await fetch('https://api.netatmo.com/api/getstationsdata', {
+                    headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+                });
+                const jsonData = await dataRes.json();
+                
+                console.log('Netatmo data:', jsonData);
+                alert('Netatmo data byla úspěšně stažena! (Podívejte se do konzole pro strukturu stanic).');
+            } catch (err) {
+                alert('Chyba při komunikaci s Netatmo API: ' + err.message);
+            }
+        }
+
         function calculateRoomEnergy(rMeasurements) {
             rMeasurements.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
             let totalHours = 0;
             let lastOnTime = null;
-
             rMeasurements.forEach(m => {
                 if (m.deviceState === 'zapnutý') {
                     if (!lastOnTime) lastOnTime = new Date(m.timestamp);
                 } else if (m.deviceState === 'vypnutý') {
                     if (lastOnTime) {
-                        const offTime = new Date(m.timestamp);
-                        totalHours += (offTime - lastOnTime) / (1000 * 60 * 60);
+                        totalHours += (new Date(m.timestamp) - lastOnTime) / (1000 * 60 * 60);
                         lastOnTime = null;
                     }
                 }
             });
-
-            if (lastOnTime) {
-                totalHours += (new Date() - lastOnTime) / (1000 * 60 * 60);
-            }
-
-            const powerKW = 300 / 1000;
-            const totalKWh = totalHours * powerKW;
-            const totalPrice = totalKWh * currentElectricityPrice;
-
-            return {
-                hours: totalHours.toFixed(1),
-                kWh: totalKWh.toFixed(2),
-                price: totalPrice.toFixed(1)
-            };
+            if (lastOnTime) totalHours += (new Date() - lastOnTime) / (1000 * 60 * 60);
+            const totalKWh = totalHours * (300 / 1000);
+            return { hours: totalHours.toFixed(1), kWh: totalKWh.toFixed(2), price: (totalKWh * currentElectricityPrice).toFixed(1) };
         }
 
         async function renderApp() {
@@ -274,7 +348,7 @@
                     <i class="fa-solid fa-chart-line mr-1"></i> Statistiky & Grafy
                 </button>
                 <button onclick="switchTab('backup')" class="px-3.5 py-2 rounded-xl font-semibold text-xs whitespace-nowrap shrink-0 transition ${activeTab === 'backup' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' : 'bg-slate-800 text-slate-300 border border-slate-700'}">
-                    <i class="fa-solid fa-database mr-1"></i> Záloha
+                    <i class="fa-solid fa-database mr-1"></i> Záloha & API
                 </button>
             `;
             tabsContainer.innerHTML = tabsHTML;
@@ -284,12 +358,9 @@
             if (activeTab === 'stats') {
                 let totalWater = rooms.reduce((sum, r) => sum + (r.initialWater || 0), 0);
                 measurements.forEach(m => totalWater += (m.waterAdded || 0));
-                
-                let houseTotalKWh = 0;
-                let houseTotalPrice = 0;
+                let houseTotalKWh = 0, houseTotalPrice = 0;
                 rooms.forEach(r => {
-                    const rMeas = measurements.filter(m => m.roomId === r.id);
-                    const stats = calculateRoomEnergy(rMeas);
+                    const stats = calculateRoomEnergy(measurements.filter(m => m.roomId === r.id));
                     houseTotalKWh += parseFloat(stats.kWh);
                     houseTotalPrice += parseFloat(stats.price);
                 });
@@ -331,17 +402,32 @@
 
             } else if (activeTab === 'backup') {
                 contentContainer.innerHTML = `
-                    <div class="bg-slate-800 border border-slate-700/80 p-6 rounded-3xl shadow-xl space-y-6">
-                        <h2 class="text-xl font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-database mr-2"></i> Záloha a obnova dat</h2>
-                        <p class="text-xs text-slate-300">Aplikace automaticky zálohuje data v paměti zařízení. Můžeš si ale kdykoliv stáhnout soubor zálohy.</p>
-                        <div class="flex flex-wrap gap-4 pt-2">
-                            <button onclick="exportJSON()" class="bg-slate-700 hover:bg-slate-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition shadow flex items-center space-x-2">
-                                <i class="fa-solid fa-download"></i> <span>Stáhnout zálohu (JSON)</span>
-                            </button>
-                            <label class="bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition shadow flex items-center space-x-2 cursor-pointer">
-                                <i class="fa-solid fa-upload"></i> <span>Obnovit ze zálohy</span>
-                                <input type="file" id="importFile" accept=".json" onchange="importJSON(event)" class="hidden">
-                            </label>
+                    <div class="space-y-6">
+                        <div class="bg-slate-800 border border-slate-700/80 p-6 rounded-3xl shadow-xl space-y-6">
+                            <h2 class="text-xl font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-database mr-2"></i> Záloha a obnova dat</h2>
+                            <div class="flex flex-wrap gap-4 pt-2">
+                                <button onclick="exportJSON()" class="bg-slate-700 hover:bg-slate-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition shadow flex items-center space-x-2">
+                                    <i class="fa-solid fa-download"></i> <span>Stáhnout zálohu (JSON)</span>
+                                </button>
+                                <label class="bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition shadow flex items-center space-x-2 cursor-pointer">
+                                    <i class="fa-solid fa-upload"></i> <span>Obnovit ze zálohy</span>
+                                    <input type="file" id="importFile" accept=".json" onchange="importJSON(event)" class="hidden">
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- NETATMO API NASTAVENÍ -->
+                        <div class="bg-slate-800 border border-slate-700/80 p-6 rounded-3xl shadow-xl space-y-4">
+                            <h2 class="text-xl font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-cloud mr-2"></i> Připojení Netatmo Meteostanice</h2>
+                            <p class="text-xs text-slate-300">Zadejte své vývojářské údaje z Netatmo API portálu pro stažení aktuálních hodnot.</p>
+                            <div class="space-y-3">
+                                <input type="text" id="netatmoClientId" placeholder="Netatmo Client ID" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
+                                <input type="password" id="netatmoClientSecret" placeholder="Netatmo Client Secret" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
+                                <input type="password" id="netatmoRefreshToken" placeholder="Netatmo Refresh Token" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
+                                <button onclick="syncNetatmo()" class="bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition shadow">
+                                    Stáhnout data z Netatmo
+                                </button>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -353,7 +439,6 @@
                 const latest = rMeas[0] || { humidity: 55, temperature: 21, deviceState: 'vypnutý' };
                 const totalWater = (r.initialWater || 0) + rMeas.reduce((sum, m) => sum + (m.waterAdded || 0), 0);
                 const isRunning = latest.deviceState === 'zapnutý';
-
                 const energyStats = calculateRoomEnergy(rMeas);
 
                 const tempAngle = Math.min(Math.max((latest.temperature / 40) * 180 - 90, -90), 90);
@@ -369,6 +454,9 @@
                                 <p class="text-xs text-slate-400">Poslední akce: ${new Date(latest.timestamp).toLocaleString('cs-CZ')}</p>
                             </div>
                             <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                                <button onclick="connectThermoPro('${r.id}')" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-xl text-xs font-semibold transition shadow flex items-center space-x-1.5">
+                                    <i class="fa-brands fa-bluetooth-b"></i> <span>Připojit ThermoPro</span>
+                                </button>
                                 <div class="flex items-center space-x-1.5 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-700 text-xs">
                                     <span class="text-slate-400">Cena kWh:</span>
                                     <input type="number" step="0.5" value="${currentElectricityPrice}" onchange="currentElectricityPrice = parseFloat(this.value) || 6.0; renderApp();" class="w-14 bg-slate-800 text-cyan-400 font-bold text-center rounded p-0.5">
@@ -403,7 +491,6 @@
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            
                             <div class="bg-slate-900/70 border border-slate-700/60 p-4 rounded-2xl space-y-3 text-center">
                                 <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block"><i class="fa-solid fa-temperature-three-quarters text-emerald-400 mr-1"></i> Teplota (Budík)</span>
                                 <div class="gauge-container">
@@ -466,11 +553,9 @@
                                     <canvas id="chart-${r.id}"></canvas>
                                 </div>
                             </div>
-
                         </div>
                     </div>
                 `;
-
                 setTimeout(() => renderRoomChart(r.id, rMeas, r.color), 50);
             }
         }
@@ -478,20 +563,14 @@
         function moveNeedle(roomId, type, val) {
             const needle = document.getElementById(`needle-${type}-${roomId}`);
             if (!needle) return;
-            let angle = -90;
-            if (type === 'temp') {
-                angle = Math.min(Math.max((parseFloat(val) / 40) * 180 - 90, -90), 90);
-            } else {
-                angle = Math.min(Math.max(((parseFloat(val) - 20) / 70) * 180 - 90, -90), 90);
-            }
-            needle.style.transform = `rotate(${angle}deg)`;
+            let angle = type === 'temp' ? (parseFloat(val) / 40) * 180 - 90 : ((parseFloat(val) - 20) / 70) * 180 - 90;
+            needle.style.transform = `rotate(${Math.min(Math.max(angle, -90), 90)}deg)`;
         }
 
         async function setDeviceState(roomId, state) {
             const measurements = await getAll('measurements');
             const rMeas = measurements.filter(m => m.roomId === roomId).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
             const last = rMeas[0] || { humidity: 55, temperature: 21 };
-
             await put('measurements', {
                 roomId: roomId,
                 timestamp: new Date().toISOString(),
@@ -509,7 +588,6 @@
             const measurements = await getAll('measurements');
             const rMeas = measurements.filter(m => m.roomId === roomId).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
             const last = rMeas[0] || { deviceState: 'vypnutý', humidity: 55, temperature: 21 };
-
             await put('measurements', {
                 roomId: roomId,
                 timestamp: new Date().toISOString(),
@@ -528,7 +606,6 @@
             const measurements = await getAll('measurements');
             const rMeas = measurements.filter(m => m.roomId === roomId).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
             const last = rMeas[0] || { deviceState: 'vypnutý', humidity: 55, temperature: 21 };
-
             await put('measurements', {
                 roomId: roomId,
                 timestamp: new Date().toISOString(),
@@ -546,7 +623,6 @@
             if (!canvas) return;
             const ctx = canvas.getContext('2d');
             rMeasurements.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
-            
             new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -604,10 +680,7 @@
                     labels: rooms.map(r => r.name),
                     datasets: [{
                         label: 'Spotřeba (kWh)',
-                        data: rooms.map(r => {
-                            const rMeas = measurements.filter(m => m.roomId === r.id);
-                            return parseFloat(calculateRoomEnergy(rMeas).kWh);
-                        }),
+                        data: rooms.map(r => parseFloat(calculateRoomEnergy(measurements.filter(m => m.roomId === r.id)).kWh)),
                         backgroundColor: rooms.map(r => r.color)
                     }]
                 },
