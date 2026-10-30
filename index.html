@@ -31,7 +31,7 @@
                 </div>
                 <div>
                     <h1 class="font-bold text-lg text-cyan-400 tracking-tight">Odvlhčovací deník</h1>
-                    <p class="text-xs text-slate-400">S čidly ThermoPro & Netatmo</p>
+                    <p class="text-xs text-slate-400">Netatmo & ThermoPro systém</p>
                 </div>
             </div>
             <button onclick="openRoomModal()" class="bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-1.5 rounded-lg text-sm font-semibold transition shadow flex items-center space-x-1">
@@ -81,23 +81,23 @@
 
     <!-- JavaScript Logika -->
     <script>
-        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V12';
+        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V13';
         const DB_VERSION = 1;
         let db = null;
         let activeTab = 'room-1';
         let currentElectricityPrice = 6.0;
 
         const defaultRooms = [
-            { id: 'room-1', name: 'Koloběžníkův pokoj', initialWater: 34.76, order: 1, color: '#0ea5e9' },
-            { id: 'room-2', name: 'Valašský pokoj', initialWater: 9.70, order: 2, color: '#10b981' },
-            { id: 'room-3', name: 'Zelený pokoj', initialWater: 2.50, order: 3, color: '#f59e0b' }
+            { id: 'room-1', name: 'Koloběžníkův pokoj', initialWater: 34.76, order: 1, color: '#0ea5e9', sensorType: 'netatmo' },
+            { id: 'room-2', name: 'Valašský pokoj', initialWater: 9.70, order: 2, color: '#10b981', sensorType: 'thermopro' },
+            { id: 'room-3', name: 'Zelený pokoj', initialWater: 2.50, order: 3, color: '#f59e0b', sensorType: 'thermopro' }
         ];
 
         const defaultMeasurements = [
-            { roomId: 'room-1', timestamp: new Date(Date.now() - 3600000*2).toISOString(), humidity: 63, temperature: 21.0, deviceState: 'zapnutý', waterAdded: 0, note: 'Start běhu' },
-            { roomId: 'room-1', timestamp: new Date().toISOString(), humidity: 55, temperature: 21.0, deviceState: 'vypnutý', waterAdded: 0, note: 'Konec běhu' },
-            { roomId: 'room-2', timestamp: new Date().toISOString(), humidity: 50, temperature: 20.0, deviceState: 'zapnutý', waterAdded: 0, note: 'Běží' },
-            { roomId: 'room-3', timestamp: new Date().toISOString(), humidity: 41, temperature: 20.0, deviceState: 'zapnutý', waterAdded: 0, note: 'Běží' }
+            { roomId: 'room-1', timestamp: new Date(Date.now() - 3600000*2).toISOString(), humidity: 63, temperature: 21.0, deviceState: 'zapnutý', waterAdded: 0, note: 'Netatmo start' },
+            { roomId: 'room-1', timestamp: new Date().toISOString(), humidity: 55, temperature: 21.0, deviceState: 'vypnutý', waterAdded: 0, note: 'Netatmo konec' },
+            { roomId: 'room-2', timestamp: new Date().toISOString(), humidity: 50, temperature: 20.0, deviceState: 'zapnutý', waterAdded: 0, note: 'ThermoPro běží' },
+            { roomId: 'room-3', timestamp: new Date().toISOString(), humidity: 41, temperature: 20.0, deviceState: 'zapnutý', waterAdded: 0, note: 'ThermoPro běží' }
         ];
 
         function initDB() {
@@ -194,13 +194,13 @@
             const newId = 'room-' + Date.now();
             const colors = ['#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#3b82f6'];
             const color = colors[rooms.length % colors.length];
-            await put('rooms', { id: newId, name, initialWater, order: rooms.length + 1, color });
+            await put('rooms', { id: newId, name, initialWater, order: rooms.length + 1, color, sensorType: 'thermopro' });
             closeModal('roomModal');
             activeTab = newId;
             renderApp();
         }
 
-        // PŘIPOJENÍ THERMOPRO (Web Bluetooth API)
+        // PŘIPOJENÍ THERMOPRO PŘES BLUETOOTH
         async function connectThermoPro(roomId) {
             try {
                 if (!navigator.bluetooth) {
@@ -213,28 +213,18 @@
                 });
                 
                 const server = await device.gatt.connect();
-                alert(`Připojeno k zařízení: ${device.name}. Čtu data...`);
-                
-                // Pokus o čtení Environmental Sensing servicy (standardní BLE teplota/vlhkost)
                 const service = await server.getPrimaryService('environmental_sensing');
                 
-                // Teplota
-                let temp = 21.0;
+                let temp = 21.0, hum = 55;
                 try {
-                    const tempChar = await service.getCharacteristic('temperature');
-                    const tempVal = await tempChar.readValue();
+                    const tempVal = await (await service.getCharacteristic('temperature')).readValue();
                     temp = tempVal.getInt16(0, true) / 100.0;
                 } catch(e) {}
-
-                // Vlhkost
-                let hum = 55;
                 try {
-                    const humChar = await service.getCharacteristic('humidity');
-                    const humVal = await humChar.readValue();
+                    const humVal = await (await service.getCharacteristic('humidity')).readValue();
                     hum = humVal.getUint16(0, true) / 100.0;
                 } catch(e) {}
 
-                // Uložení do databáze
                 const measurements = await getAll('measurements');
                 const rMeas = measurements.filter(m => m.roomId === roomId).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
                 const last = rMeas[0] || { deviceState: 'vypnutý' };
@@ -246,59 +236,77 @@
                     temperature: parseFloat(temp.toFixed(1)),
                     deviceState: last.deviceState,
                     waterAdded: 0,
-                    note: `Načteno z ThermoPro (${device.name})`
+                    note: `ThermoPro (${device.name})`
                 });
                 renderApp();
-                alert(`Úspěšně načteno: Teplota ${temp.toFixed(1)}°C, Vlhkost ${Math.round(hum)}%`);
+                alert(`Úspěšně načteno z ThermoPro: ${temp.toFixed(1)}°C, ${Math.round(hum)}%`);
             } catch (err) {
-                console.error(err);
-                alert('Nepodařilo se připojit k čidlu ThermoPro: ' + err.message);
+                alert('Chyba připojení ThermoPro: ' + err.message);
             }
         }
 
-        // SYNCHRONIZACE S NETATMO API
-        async function syncNetatmo() {
-            const clientId = document.getElementById('netatmoClientId').value;
-            const clientSecret = document.getElementById('netatmoClientSecret').value;
-            const refreshToken = document.getElementById('netatmoRefreshToken').value;
+        // NETATMO API SYNCHRONIZACE
+        async function syncNetatmoForRoom(roomId) {
+            const clientId = localStorage.getItem('netatmo_client_id');
+            const clientSecret = localStorage.getItem('netatmo_client_secret');
+            const refreshToken = localStorage.getItem('netatmo_refresh_token');
 
             if (!clientId || !clientSecret || !refreshToken) {
-                alert('Vyplňte prosím všechny údaje pro Netatmo API!');
+                alert('Nejprve vyplňte Netatmo API údaje v záložce "Záloha & API"!');
+                switchTab('backup');
                 return;
             }
 
             try {
-                // 1. Získání nového Access Tokenu
                 const tokenRes = await fetch('https://api.netatmo.com/oauth2/token', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: new URLSearchParams({
-                        grant_type: 'refresh_type', // refresh_token
-                        refresh_token: refreshToken,
-                        client_id: clientId,
-                        client_secret: clientSecret
-                    })
+                    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId, client_secret: clientSecret })
                 });
                 const tokenData = await tokenRes.json();
-                if (!tokenData.access_token) throw new Error('Chyba ověření u Netatma.');
+                if (!tokenData.access_token) throw new Error('Ověření Netatmo selhalo.');
 
-                // 2. Stažení dat meteostanice
                 const dataRes = await fetch('https://api.netatmo.com/api/getstationsdata', {
                     headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
                 });
                 const jsonData = await dataRes.json();
                 
-                console.log('Netatmo data:', jsonData);
-                alert('Netatmo data byla úspěšně stažena! (Podívejte se do konzole pro strukturu stanic).');
+                // Extrakce z první stanice a modulu
+                const station = jsonData.body.devices[0];
+                const module = station.dashboard_data; // Hlavní modul nebo venkovní / pokojový
+                const temp = module.Temperature;
+                const hum = module.Humidity;
+
+                const measurements = await getAll('measurements');
+                const rMeas = measurements.filter(m => m.roomId === roomId).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+                const last = rMeas[0] || { deviceState: 'vypnutý' };
+
+                await put('measurements', {
+                    roomId: roomId,
+                    timestamp: new Date().toISOString(),
+                    humidity: hum,
+                    temperature: temp,
+                    deviceState: last.deviceState,
+                    waterAdded: 0,
+                    note: 'Netatmo meteostation'
+                });
+                renderApp();
+                alert(`Netatmo úspěšně aktualizováno: ${temp}°C, ${hum}%`);
             } catch (err) {
-                alert('Chyba při komunikaci s Netatmo API: ' + err.message);
+                alert('Chyba stahování z Netatmo: ' + err.message);
             }
+        }
+
+        function saveNetatmoConfig() {
+            localStorage.setItem('netatmo_client_id', document.getElementById('netatmoClientId').value);
+            localStorage.setItem('netatmo_client_secret', document.getElementById('netatmoClientSecret').value);
+            localStorage.setItem('netatmo_refresh_token', document.getElementById('netatmoRefreshToken').value);
+            alert('Netatmo API údaje uloženy!');
         }
 
         function calculateRoomEnergy(rMeasurements) {
             rMeasurements.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
-            let totalHours = 0;
-            let lastOnTime = null;
+            let totalHours = 0, lastOnTime = null;
             rMeasurements.forEach(m => {
                 if (m.deviceState === 'zapnutý') {
                     if (!lastOnTime) lastOnTime = new Date(m.timestamp);
@@ -418,14 +426,14 @@
 
                         <!-- NETATMO API NASTAVENÍ -->
                         <div class="bg-slate-800 border border-slate-700/80 p-6 rounded-3xl shadow-xl space-y-4">
-                            <h2 class="text-xl font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-cloud mr-2"></i> Připojení Netatmo Meteostanice</h2>
-                            <p class="text-xs text-slate-300">Zadejte své vývojářské údaje z Netatmo API portálu pro stažení aktuálních hodnot.</p>
+                            <h2 class="text-xl font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-cloud mr-2"></i> Nastavení Netatmo API (pro Koloběžníkův pokoj)</h2>
+                            <p class="text-xs text-slate-300">Zadejte své vývojářské údaje z Netatmo portálu.</p>
                             <div class="space-y-3">
-                                <input type="text" id="netatmoClientId" placeholder="Netatmo Client ID" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
-                                <input type="password" id="netatmoClientSecret" placeholder="Netatmo Client Secret" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
-                                <input type="password" id="netatmoRefreshToken" placeholder="Netatmo Refresh Token" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
-                                <button onclick="syncNetatmo()" class="bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition shadow">
-                                    Stáhnout data z Netatmo
+                                <input type="text" id="netatmoClientId" value="${localStorage.getItem('netatmo_client_id') || ''}" placeholder="Netatmo Client ID" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
+                                <input type="password" id="netatmoClientSecret" value="${localStorage.getItem('netatmo_client_secret') || ''}" placeholder="Netatmo Client Secret" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
+                                <input type="password" id="netatmoRefreshToken" value="${localStorage.getItem('netatmo_refresh_token') || ''}" placeholder="Netatmo Refresh Token" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
+                                <button onclick="saveNetatmoConfig()" class="bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition shadow">
+                                    Uložit Netatmo údaje
                                 </button>
                             </div>
                         </div>
@@ -444,6 +452,14 @@
                 const tempAngle = Math.min(Math.max((latest.temperature / 40) * 180 - 90, -90), 90);
                 const humAngle = Math.min(Math.max(((latest.humidity - 20) / 70) * 180 - 90, -90), 90);
 
+                // Tlačítko pro čidlo podle toho, zda je to Netatmo nebo ThermoPro
+                let sensorButtonHTML = '';
+                if (r.id === 'room-1') {
+                    sensorButtonHTML = `<button onclick="syncNetatmoForRoom('${r.id}')" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl text-xs font-semibold transition shadow flex items-center space-x-1.5"><i class="fa-solid fa-cloud-arrow-down"></i> <span>Načíst Netatmo</span></button>`;
+                } else {
+                    sensorButtonHTML = `<button onclick="connectThermoPro('${r.id}')" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-xl text-xs font-semibold transition shadow flex items-center space-x-1.5"><i class="fa-brands fa-bluetooth-b"></i> <span>Připojit ThermoPro</span></button>`;
+                }
+
                 contentContainer.innerHTML = `
                     <div class="bg-slate-800 border border-slate-700/80 p-5 rounded-3xl shadow-xl space-y-6">
                         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-700 pb-4">
@@ -454,9 +470,7 @@
                                 <p class="text-xs text-slate-400">Poslední akce: ${new Date(latest.timestamp).toLocaleString('cs-CZ')}</p>
                             </div>
                             <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-                                <button onclick="connectThermoPro('${r.id}')" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-xl text-xs font-semibold transition shadow flex items-center space-x-1.5">
-                                    <i class="fa-brands fa-bluetooth-b"></i> <span>Připojit ThermoPro</span>
-                                </button>
+                                ${sensorButtonHTML}
                                 <div class="flex items-center space-x-1.5 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-700 text-xs">
                                     <span class="text-slate-400">Cena kWh:</span>
                                     <input type="number" step="0.5" value="${currentElectricityPrice}" onchange="currentElectricityPrice = parseFloat(this.value) || 6.0; renderApp();" class="w-14 bg-slate-800 text-cyan-400 font-bold text-center rounded p-0.5">
