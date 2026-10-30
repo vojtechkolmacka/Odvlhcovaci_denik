@@ -81,7 +81,7 @@
 
     <!-- JavaScript Logika -->
     <script>
-        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V15';
+        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V16';
         const DB_VERSION = 1;
         let db = null;
         let activeTab = 'room-1';
@@ -200,7 +200,7 @@
             renderApp();
         }
 
-        // PŘIPOJENÍ THERMOPRO PŘES BLUETOOTH
+        // OPRAVENÉ PŘIPOJENÍ THERMOPRO (Podpora custom ThermoPro BLE charakteristik)
         async function connectThermoPro(roomId) {
             try {
                 if (!navigator.bluetooth) {
@@ -209,23 +209,54 @@
                 }
                 const device = await navigator.bluetooth.requestDevice({
                     acceptAllDevices: true,
-                    optionalServices: ['environmental_sensing', '0000ffe0-0000-1000-8000-00805f9b34fb']
+                    optionalServices: [
+                        'environmental_sensing', 
+                        '0000ffe0-0000-1000-8000-00805f9b34fb',
+                        '0000fff0-0000-1000-8000-00805f9b34fb',
+                        0xfee0
+                    ]
                 });
                 
                 const server = await device.gatt.connect();
-                let temp = 21.0, hum = 55;
-                try {
-                    const service = await server.getPrimaryService('environmental_sensing');
+                let temp = null, hum = null;
+
+                // Prozkoumáme dostupné služby a charakteristiky ThermoPro
+                const services = await server.getPrimaryServices();
+                for (const service of services) {
                     try {
+                        const characteristics = await service.getCharacteristics();
+                        for (const char of characteristics) {
+                            try {
+                                const val = await char.readValue();
+                                if (val.byteLength >= 4) {
+                                    // Pokus o parsování dat z ThermoPro (často posílají teplota v int16 na 0. pozici a vlhkost na 2. nebo 4. pozici)
+                                    const t = val.getInt16(0, true) / 100.0;
+                                    const h = val.getUint16(2, true) / 100.0;
+                                    if (t > -40 && t < 80 && h >= 0 && h <= 100) {
+                                        temp = t;
+                                        hum = h;
+                                        break;
+                                    }
+                                }
+                            } catch(innerErr) {}
+                        }
+                    } catch(servErr) {}
+                    if (temp !== null && hum !== null) break;
+                }
+
+                // Pokud se automatické čtení přes byte array nepovedlo, zkusíme standardní charakteristiky
+                if (temp === null || hum === null) {
+                    try {
+                        const service = await server.getPrimaryService('environmental_sensing');
                         const tempVal = await (await service.getCharacteristic('temperature')).readValue();
                         temp = tempVal.getInt16(0, true) / 100.0;
-                    } catch(e) {}
-                    try {
                         const humVal = await (await service.getCharacteristic('humidity')).readValue();
                         hum = humVal.getUint16(0, true) / 100.0;
                     } catch(e) {}
-                } catch(e) {
-                    alert('Zařízení je připojené, ale služba nebyla plně detekována.');
+                }
+
+                if (temp === null || hum === null) {
+                    throw new Error('Nepodařilo se vyčíst data z tohoto čidla. Zkuste prosím ruční zápis.');
                 }
 
                 const measurements = await getAll('measurements');
@@ -242,7 +273,7 @@
                     note: `ThermoPro (${device.name || 'Čidlo'})`
                 });
                 renderApp();
-                alert(`Úspěšně načteno: ${temp.toFixed(1)}°C, ${Math.round(hum)}%`);
+                alert(`Úspěšně načteno z ThermoPro: ${temp.toFixed(1)}°C, ${Math.round(hum)}%`);
             } catch (err) {
                 alert('Chyba připojení ThermoPro: ' + err.message);
             }
@@ -488,7 +519,7 @@
                             </div>
                         </div>
 
-                        <!-- NETATMO API NASTAVENÍ S AUTOMATICKÝM TLAČÍTKEM -->
+                        <!-- NETATMO API NASTAVENÍ -->
                         <div class="bg-slate-800 border border-slate-700/80 p-6 rounded-3xl shadow-xl space-y-4">
                             <h2 class="text-xl font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-cloud mr-2"></i> Nastavení Netatmo API</h2>
                             <p class="text-xs text-slate-300">Zadejte své údaje a vygenerujte Refresh Token přímo v aplikaci.</p>
