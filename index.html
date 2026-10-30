@@ -81,16 +81,16 @@
 
     <!-- JavaScript Logika -->
     <script>
-        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V13';
+        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V14';
         const DB_VERSION = 1;
         let db = null;
         let activeTab = 'room-1';
         let currentElectricityPrice = 6.0;
 
         const defaultRooms = [
-            { id: 'room-1', name: 'Koloběžníkův pokoj', initialWater: 34.76, order: 1, color: '#0ea5e9', sensorType: 'netatmo' },
-            { id: 'room-2', name: 'Valašský pokoj', initialWater: 9.70, order: 2, color: '#10b981', sensorType: 'thermopro' },
-            { id: 'room-3', name: 'Zelený pokoj', initialWater: 2.50, order: 3, color: '#f59e0b', sensorType: 'thermopro' }
+            { id: 'room-1', name: 'Koloběžníkův pokoj', initialWater: 34.76, order: 1, color: '#0ea5e9' },
+            { id: 'room-2', name: 'Valašský pokoj', initialWater: 9.70, order: 2, color: '#10b981' },
+            { id: 'room-3', name: 'Zelený pokoj', initialWater: 2.50, order: 3, color: '#f59e0b' }
         ];
 
         const defaultMeasurements = [
@@ -194,7 +194,7 @@
             const newId = 'room-' + Date.now();
             const colors = ['#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#3b82f6'];
             const color = colors[rooms.length % colors.length];
-            await put('rooms', { id: newId, name, initialWater, order: rooms.length + 1, color, sensorType: 'thermopro' });
+            await put('rooms', { id: newId, name, initialWater, order: rooms.length + 1, color });
             closeModal('roomModal');
             activeTab = newId;
             renderApp();
@@ -208,22 +208,25 @@
                     return;
                 }
                 const device = await navigator.bluetooth.requestDevice({
-                    filters: [{ namePrefix: 'TP' }, { namePrefix: 'ThermoPro' }, { services: ['environmental_sensing'] }],
+                    acceptAllDevices: true,
                     optionalServices: ['environmental_sensing', '0000ffe0-0000-1000-8000-00805f9b34fb']
                 });
                 
                 const server = await device.gatt.connect();
-                const service = await server.getPrimaryService('environmental_sensing');
-                
                 let temp = 21.0, hum = 55;
                 try {
-                    const tempVal = await (await service.getCharacteristic('temperature')).readValue();
-                    temp = tempVal.getInt16(0, true) / 100.0;
-                } catch(e) {}
-                try {
-                    const humVal = await (await service.getCharacteristic('humidity')).readValue();
-                    hum = humVal.getUint16(0, true) / 100.0;
-                } catch(e) {}
+                    const service = await server.getPrimaryService('environmental_sensing');
+                    try {
+                        const tempVal = await (await service.getCharacteristic('temperature')).readValue();
+                        temp = tempVal.getInt16(0, true) / 100.0;
+                    } catch(e) {}
+                    try {
+                        const humVal = await (await service.getCharacteristic('humidity')).readValue();
+                        hum = humVal.getUint16(0, true) / 100.0;
+                    } catch(e) {}
+                } catch(e) {
+                    alert('Zařízení je připojené, ale služba nebyla plně detekována. Hodnoty zůstávají.');
+                }
 
                 const measurements = await getAll('measurements');
                 const rMeas = measurements.filter(m => m.roomId === roomId).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -236,23 +239,87 @@
                     temperature: parseFloat(temp.toFixed(1)),
                     deviceState: last.deviceState,
                     waterAdded: 0,
-                    note: `ThermoPro (${device.name})`
+                    note: `ThermoPro (${device.name || 'Čidlo'})`
                 });
                 renderApp();
-                alert(`Úspěšně načteno z ThermoPro: ${temp.toFixed(1)}°C, ${Math.round(hum)}%`);
+                alert(`Úspěšně načteno: ${temp.toFixed(1)}°C, ${Math.round(hum)}%`);
             } catch (err) {
                 alert('Chyba připojení ThermoPro: ' + err.message);
             }
         }
 
-        // NETATMO API SYNCHRONIZACE
+        // NETATMO: OTEVŘENÍ AUTORIZACE V PROHLÍŽEČI
+        function startNetatmoAuth() {
+            const clientId = document.getElementById('netatmoClientId').value;
+            if (!clientId) {
+                alert('Nejprve vyplňte Client ID!');
+                return;
+            }
+            const authUrl = `https://api.netatmo.com/oauth2/authorize?client_id=${clientId}&redirect_uri=https://localhost&scope=read_station`;
+            window.location.href = authUrl;
+        }
+
+        // NETATMO: VÝMĚNA URL ADRESY ZA REFRESH TOKEN
+        async function exchangeNetatmoCode() {
+            const clientId = document.getElementById('netatmoClientId').value;
+            const clientSecret = document.getElementById('netatmoClientSecret').value;
+            const fullUrlInput = document.getElementById('netatmoFullUrl').value;
+
+            if (!clientId || !clientSecret || !fullUrlInput) {
+                alert('Vyplňte Client ID, Client Secret a zkopírujte celou URL adresu!');
+                return;
+            }
+
+            let code = '';
+            try {
+                const urlObj = new URL(fullUrlInput);
+                code = urlObj.searchParams.get('code');
+            } catch(e) {
+                // Pokud uživatel zkopíroval jen samotný kód
+                code = fullUrlInput.trim();
+            }
+
+            if (!code) {
+                alert nepodařilo se najít kód v URL adrese!;
+                return;
+            }
+
+            try {
+                const tokenRes = await fetch('https://api.netatmo.com/oauth2/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        grant_type: 'authorization_code',
+                        client_id: clientId,
+                        client_secret: clientSecret,
+                        code: code,
+                        redirect_uri: 'https://localhost',
+                        scope: 'read_station'
+                    })
+                });
+                const tokenData = await tokenRes.json();
+                if (tokenData.refresh_token) {
+                    localStorage.setItem('netatmo_client_id', clientId);
+                    localStorage.setItem('netatmo_client_secret', clientSecret);
+                    localStorage.setItem('netatmo_refresh_token', tokenData.refresh_token);
+                    document.getElementById('netatmoRefreshToken').value = tokenData.refresh_token;
+                    alert('Úspěšně získán a uložen Refresh Token!');
+                } else {
+                    throw new Error(tokenData.error || 'Neznámá chyba tokenu.');
+                }
+            } catch(err) {
+                alert('Chyba při výměně kódu: ' + err.message);
+            }
+        }
+
+        // NETATMO: STAŽENÍ DAT PRO KOLOBĚŽNÍKŮV POKOJ
         async function syncNetatmoForRoom(roomId) {
-            const clientId = localStorage.getItem('netatmo_client_id');
-            const clientSecret = localStorage.getItem('netatmo_client_secret');
-            const refreshToken = localStorage.getItem('netatmo_refresh_token');
+            const clientId = localStorage.getItem('netatmo_client_id') || document.getElementById('netatmoClientId').value;
+            const clientSecret = localStorage.getItem('netatmo_client_secret') || document.getElementById('netatmoClientSecret').value;
+            const refreshToken = localStorage.getItem('netatmo_refresh_token') || document.getElementById('netatmoRefreshToken').value;
 
             if (!clientId || !clientSecret || !refreshToken) {
-                alert('Nejprve vyplňte Netatmo API údaje v záložce "Záloha & API"!');
+                alert('Nejprve nastavte Netatmo API v záložce "Záloha & API"!');
                 switchTab('backup');
                 return;
             }
@@ -264,16 +331,14 @@
                     body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId, client_secret: clientSecret })
                 });
                 const tokenData = await tokenRes.json();
-                if (!tokenData.access_token) throw new Error('Ověření Netatmo selhalo.');
+                if (!tokenData.access_token) throw new Error('Obnovení tokenu selhalo.');
 
                 const dataRes = await fetch('https://api.netatmo.com/api/getstationsdata', {
                     headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
                 });
                 const jsonData = await dataRes.json();
                 
-                // Extrakce z první stanice a modulu
-                const station = jsonData.body.devices[0];
-                const module = station.dashboard_data; // Hlavní modul nebo venkovní / pokojový
+                const module = jsonData.body.devices[0].dashboard_data;
                 const temp = module.Temperature;
                 const hum = module.Humidity;
 
@@ -291,7 +356,7 @@
                     note: 'Netatmo meteostation'
                 });
                 renderApp();
-                alert(`Netatmo úspěšně aktualizováno: ${temp}°C, ${hum}%`);
+                alert(`Netatmo data stažena: ${temp}°C, ${hum}%`);
             } catch (err) {
                 alert('Chyba stahování z Netatmo: ' + err.message);
             }
@@ -301,7 +366,7 @@
             localStorage.setItem('netatmo_client_id', document.getElementById('netatmoClientId').value);
             localStorage.setItem('netatmo_client_secret', document.getElementById('netatmoClientSecret').value);
             localStorage.setItem('netatmo_refresh_token', document.getElementById('netatmoRefreshToken').value);
-            alert('Netatmo API údaje uloženy!');
+            alert('Netatmo údaje uloženy!');
         }
 
         function calculateRoomEnergy(rMeasurements) {
@@ -356,7 +421,7 @@
                     <i class="fa-solid fa-chart-line mr-1"></i> Statistiky & Grafy
                 </button>
                 <button onclick="switchTab('backup')" class="px-3.5 py-2 rounded-xl font-semibold text-xs whitespace-nowrap shrink-0 transition ${activeTab === 'backup' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' : 'bg-slate-800 text-slate-300 border border-slate-700'}">
-                    <i class="fa-solid fa-database mr-1"></i> Záloha & API
+                    <i class="fa-solid  fa-database mr-1"></i> Záloha & API
                 </button>
             `;
             tabsContainer.innerHTML = tabsHTML;
@@ -424,16 +489,28 @@
                             </div>
                         </div>
 
-                        <!-- NETATMO API NASTAVENÍ -->
+                        <!-- NETATMO API NASTAVENÍ S AUTOMATICKÝM TLAČÍTKEM -->
                         <div class="bg-slate-800 border border-slate-700/80 p-6 rounded-3xl shadow-xl space-y-4">
-                            <h2 class="text-xl font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-cloud mr-2"></i> Nastavení Netatmo API (pro Koloběžníkův pokoj)</h2>
-                            <p class="text-xs text-slate-300">Zadejte své vývojářské údaje z Netatmo portálu.</p>
+                            <h2 class="text-xl font-bold text-cyan-400 flex items-center"><i class="fa-solid fa-cloud mr-2"></i> Nastavení Netatmo API</h2>
+                            <p class="text-xs text-slate-300">Zadejte své údaje a vygenerujte Refresh Token přímo v aplikaci.</p>
                             <div class="space-y-3">
                                 <input type="text" id="netatmoClientId" value="${localStorage.getItem('netatmo_client_id') || ''}" placeholder="Netatmo Client ID" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
                                 <input type="password" id="netatmoClientSecret" value="${localStorage.getItem('netatmo_client_secret') || ''}" placeholder="Netatmo Client Secret" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
-                                <input type="password" id="netatmoRefreshToken" value="${localStorage.getItem('netatmo_refresh_token') || ''}" placeholder="Netatmo Refresh Token" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
-                                <button onclick="saveNetatmoConfig()" class="bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition shadow">
-                                    Uložit Netatmo údaje
+                                
+                                <button onclick="startNetatmoAuth()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition shadow">
+                                    1. Získat autorizační kód (Přihlásit k Netatmo)
+                                </button>
+
+                                <input type="text" id="netatmoFullUrl" placeholder="Sem vlož zkopírovanou URL adresu z prohlížeče (https://localhost/?code=...)" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
+                                
+                                <button onclick="exchangeNetatmoCode()" class="w-full bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition shadow">
+                                    2. Vyměnit kód za Refresh Token
+                                </button>
+
+                                <input type="text" id="netatmoRefreshToken" value="${localStorage.getItem('netatmo_refresh_token') || ''}" placeholder="Refresh Token (vyplní se sám)" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-100">
+                                
+                                <button onclick="saveNetatmoConfig()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition shadow">
+                                    Uložit nastavení Netatmo
                                 </button>
                             </div>
                         </div>
@@ -452,7 +529,6 @@
                 const tempAngle = Math.min(Math.max((latest.temperature / 40) * 180 - 90, -90), 90);
                 const humAngle = Math.min(Math.max(((latest.humidity - 20) / 70) * 180 - 90, -90), 90);
 
-                // Tlačítko pro čidlo podle toho, zda je to Netatmo nebo ThermoPro
                 let sensorButtonHTML = '';
                 if (r.id === 'room-1') {
                     sensorButtonHTML = `<button onclick="syncNetatmoForRoom('${r.id}')" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl text-xs font-semibold transition shadow flex items-center space-x-1.5"><i class="fa-solid fa-cloud-arrow-down"></i> <span>Načíst Netatmo</span></button>`;
