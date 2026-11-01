@@ -31,7 +31,7 @@
                 </div>
                 <div>
                     <h1 class="font-bold text-lg text-cyan-400 tracking-tight">Odvlhčovací deník</h1>
-                    <p class="text-xs text-slate-400">Netatmo & Tapo P110 systém</p>
+                    <p class="text-xs text-slate-400">Netatmo & Ruční zápis</p>
                 </div>
             </div>
             <button onclick="openRoomModal()" class="bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-1.5 rounded-lg text-sm font-semibold transition shadow flex items-center space-x-1">
@@ -81,7 +81,7 @@
 
     <!-- JavaScript Logika -->
     <script>
-        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V23';
+        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V24';
         const DB_VERSION = 1;
         let db = null;
         let activeTab = 'room-1';
@@ -341,13 +341,6 @@
             renderApp();
         }
 
-        // Tapo P110 přímé otevření aplikace Tapo nebo lokální přepnutí pro Comfee
-        async function toggleTapoOutlet(state) {
-            await setDeviceState('room-1', state);
-            // Pokusí se otevřít aplikaci Tapo v telefonu, kde se zásuvka rovnou přepne
-            window.location.href = "tapo://";
-        }
-
         function calculateRoomEnergy(rMeasurements) {
             rMeasurements.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
             let totalHours = 0, lastOnTime = null;
@@ -507,29 +500,8 @@
                 const humAngle = Math.min(Math.max(((latest.humidity - 20) / 70) * 180 - 90, -90), 90);
 
                 let sensorButtonHTML = '';
-                let controlButtonsHTML = '';
-
                 if (r.id === 'room-1') {
                     sensorButtonHTML = `<button onclick="syncNetatmoForRoom('${r.id}')" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl text-xs font-semibold transition shadow flex items-center space-x-1.5"><i class="fa-solid fa-cloud-arrow-down"></i> <span>Načíst Netatmo</span></button>`;
-                    
-                    // Tlačítko pro Koloběžníkův pokoj, které přepne stav v aplikaci a otevře aplikaci Tapo v mobilu
-                    controlButtonsHTML = `
-                        <button onclick="toggleTapoOutlet('zapnutý')" class="px-4 py-2 rounded-xl font-bold text-xs transition ${isRunning ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/30' : 'bg-slate-900 text-slate-400 border border-slate-700'}">
-                            <i class="fa-solid fa-play mr-1"></i> ZAPNOUT COMFEE
-                        </button>
-                        <button onclick="toggleTapoOutlet('vypnutý')" class="px-4 py-2 rounded-xl font-bold text-xs transition ${!isRunning ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-slate-900 text-slate-400 border border-slate-700'}">
-                            <i class="fa-solid fa-stop mr-1"></i> VYPNOUT COMFEE
-                        </button>
-                    `;
-                } else {
-                    controlButtonsHTML = `
-                        <button onclick="setDeviceState('${r.id}', 'zapnutý')" class="px-4 py-2 rounded-xl font-bold text-xs transition ${isRunning ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/30' : 'bg-slate-900 text-slate-400 border border-slate-700'}">
-                            <i class="fa-solid fa-play mr-1"></i> ZAPNUTO
-                        </button>
-                        <button onclick="setDeviceState('${r.id}', 'vypnutý')" class="px-4 py-2 rounded-xl font-bold text-xs transition ${!isRunning ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-slate-900 text-slate-400 border border-slate-700'}">
-                            <i class="fa-solid fa-stop mr-1"></i> VYPNUTO
-                        </button>
-                    `;
                 }
 
                 contentContainer.innerHTML = `
@@ -548,7 +520,12 @@
                                     <input type="number" step="0.5" value="${currentElectricityPrice}" onchange="currentElectricityPrice = parseFloat(this.value) || 6.0; renderApp();" class="w-14 bg-slate-800 text-cyan-400 font-bold text-center rounded p-0.5">
                                     <span class="text-slate-400">Kč</span>
                                 </div>
-                                ${controlButtonsHTML}
+                                <button onclick="setDeviceState('${r.id}', 'zapnutý')" class="px-4 py-2 rounded-xl font-bold text-xs transition ${isRunning ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/30' : 'bg-slate-900 text-slate-400 border border-slate-700'}">
+                                    <i class="fa-solid fa-play mr-1"></i> ZAPNUTO
+                                </button>
+                                <button onclick="setDeviceState('${r.id}', 'vypnutý')" class="px-4 py-2 rounded-xl font-bold text-xs transition ${!isRunning ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-slate-900 text-slate-400 border border-slate-700'}">
+                                    <i class="fa-solid fa-stop mr-1"></i> VYPNUTO
+                                </button>
                             </div>
                         </div>
 
