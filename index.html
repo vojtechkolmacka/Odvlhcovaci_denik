@@ -81,7 +81,7 @@
 
     <!-- JavaScript Logika -->
     <script>
-        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V22';
+        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V23';
         const DB_VERSION = 1;
         let db = null;
         let activeTab = 'room-1';
@@ -341,11 +341,11 @@
             renderApp();
         }
 
-        // Tapo P110 spínání pro Koloběžníkův pokoj
+        // Tapo P110 přímé otevření aplikace Tapo nebo lokální přepnutí pro Comfee
         async function toggleTapoOutlet(state) {
-            const actionText = state === 'zapnutý' ? 'zapínám' : 'vypínám';
-            alert(`Odesílám požadavek: Odvlhčovač Comfee se ${actionText}...`);
             await setDeviceState('room-1', state);
+            // Pokusí se otevřít aplikaci Tapo v telefonu, kde se zásuvka rovnou přepne
+            window.location.href = "tapo://";
         }
 
         function calculateRoomEnergy(rMeasurements) {
@@ -510,9 +510,9 @@
                 let controlButtonsHTML = '';
 
                 if (r.id === 'room-1') {
-                    // Speciální výbava pro Koloběžníkův pokoj (Netatmo + Tapo P110 spínání Comfee)
                     sensorButtonHTML = `<button onclick="syncNetatmoForRoom('${r.id}')" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl text-xs font-semibold transition shadow flex items-center space-x-1.5"><i class="fa-solid fa-cloud-arrow-down"></i> <span>Načíst Netatmo</span></button>`;
                     
+                    // Tlačítko pro Koloběžníkův pokoj, které přepne stav v aplikaci a otevře aplikaci Tapo v mobilu
                     controlButtonsHTML = `
                         <button onclick="toggleTapoOutlet('zapnutý')" class="px-4 py-2 rounded-xl font-bold text-xs transition ${isRunning ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/30' : 'bg-slate-900 text-slate-400 border border-slate-700'}">
                             <i class="fa-solid fa-play mr-1"></i> ZAPNOUT COMFEE
@@ -522,7 +522,6 @@
                         </button>
                     `;
                 } else {
-                    // Standardní ruční ovládání pro ostatní pokoje
                     controlButtonsHTML = `
                         <button onclick="setDeviceState('${r.id}', 'zapnutý')" class="px-4 py-2 rounded-xl font-bold text-xs transition ${isRunning ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/30' : 'bg-slate-900 text-slate-400 border border-slate-700'}">
                             <i class="fa-solid fa-play mr-1"></i> ZAPNUTO
@@ -574,7 +573,7 @@
                             </div>
                         </div>
 
-                        <!-- Tapo P110 přímý zápis spotřeby (zobrazil se u všech pro možnost zadání, u pokoje 1 primárně z Tapo) -->
+                        <!-- Tapo P110 přímý zápis spotřeby -->
                         <div class="bg-slate-900/40 p-3 rounded-2xl border border-slate-700/40 flex items-center justify-between flex-wrap gap-2">
                             <span class="text-xs text-slate-300"><i class="fa-solid fa-plug text-amber-400 mr-1"></i> Opsat kWh ze zásuvky / měřiče:</span>
                             <div class="flex items-center space-x-2">
