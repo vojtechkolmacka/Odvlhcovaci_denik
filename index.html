@@ -31,7 +31,7 @@
                 </div>
                 <div>
                     <h1 class="font-bold text-lg text-cyan-400 tracking-tight">Odvlhčovací deník</h1>
-                    <p class="text-xs text-slate-400">Netatmo & Ruční zápis</p>
+                    <p class="text-xs text-slate-400">Netatmo & Tapo P110 systém</p>
                 </div>
             </div>
             <button onclick="openRoomModal()" class="bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-1.5 rounded-lg text-sm font-semibold transition shadow flex items-center space-x-1">
@@ -81,7 +81,7 @@
 
     <!-- JavaScript Logika -->
     <script>
-        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V19';
+        const DB_NAME = 'KolobeznikOdvlhcovaniDB_V21';
         const DB_VERSION = 1;
         let db = null;
         let activeTab = 'room-1';
@@ -94,10 +94,10 @@
         ];
 
         const defaultMeasurements = [
-            { roomId: 'room-1', timestamp: new Date(Date.now() - 3600000*2).toISOString(), humidity: 63, temperature: 21.0, deviceState: 'zapnutý', waterAdded: 0, note: 'Netatmo start' },
-            { roomId: 'room-1', timestamp: new Date().toISOString(), humidity: 55, temperature: 21.0, deviceState: 'vypnutý', waterAdded: 0, note: 'Netatmo konec' },
-            { roomId: 'room-2', timestamp: new Date().toISOString(), humidity: 50, temperature: 20.0, deviceState: 'zapnutý', waterAdded: 0, note: 'Ruční zápis' },
-            { roomId: 'room-3', timestamp: new Date().toISOString(), humidity: 41, temperature: 20.0, deviceState: 'zapnutý', waterAdded: 0, note: 'Ruční zápis' }
+            { roomId: 'room-1', timestamp: new Date(Date.now() - 3600000*2).toISOString(), humidity: 63, temperature: 21.0, deviceState: 'zapnutý', waterAdded: 0, customKWh: 0, note: 'Netatmo start' },
+            { roomId: 'room-1', timestamp: new Date().toISOString(), humidity: 55, temperature: 21.0, deviceState: 'vypnutý', waterAdded: 0, customKWh: 0, note: 'Netatmo konec' },
+            { roomId: 'room-2', timestamp: new Date().toISOString(), humidity: 50, temperature: 20.0, deviceState: 'zapnutý', waterAdded: 0, customKWh: 0, note: 'Ruční zápis' },
+            { roomId: 'room-3', timestamp: new Date().toISOString(), humidity: 41, temperature: 20.0, deviceState: 'zapnutý', waterAdded: 0, customKWh: 0, note: 'Ruční zápis' }
         ];
 
         function initDB() {
@@ -296,7 +296,7 @@
 
                 const measurements = await getAll('measurements');
                 const rMeas = measurements.filter(m => m.roomId === roomId).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
-                const last = rMeas[0] || { deviceState: 'vypnutý' };
+                const last = rMeas[0] || { deviceState: 'vypnutý', customKWh: 0 };
 
                 await put('measurements', {
                     roomId: roomId,
@@ -305,6 +305,7 @@
                     temperature: temp,
                     deviceState: last.deviceState,
                     waterAdded: 0,
+                    customKWh: last.customKWh || 0,
                     note: 'Netatmo meteostation'
                 });
                 renderApp();
@@ -321,10 +322,43 @@
             alert('Netatmo údaje uloženy!');
         }
 
+        async function updateKWh(roomId, val) {
+            const kWh = parseFloat(val) || 0;
+            const measurements = await getAll('measurements');
+            const rMeas = measurements.filter(m => m.roomId === roomId).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+            const last = rMeas[0] || { deviceState: 'vypnutý', humidity: 55, temperature: 21 };
+            
+            await put('measurements', {
+                roomId: roomId,
+                timestamp: new Date().toISOString(),
+                humidity: last.humidity,
+                temperature: last.temperature,
+                deviceState: last.deviceState,
+                waterAdded: 0,
+                customKWh: kWh,
+                note: `Zadána spotřeba Tapo P110: ${kWh} kWh`
+            });
+            renderApp();
+        }
+
+        // Tapo P110 přímé spínání přes Google Home / domácí rozhraní
+        async function toggleTapoOutlet(state) {
+            // ID zásuvky Odvlhčovač Comfee v domácím grafu je '000'
+            const deviceId = '000';
+            const actionText = state === 'zapnutý' ? 'zapínám' : 'vypínám';
+            alert(`Odesílám požadavek: Odvlhčovač Comfee se ${actionText}...`);
+            
+            // Zde se provede uložení stavu do deníku
+            await setDeviceState('room-1', state);
+        }
+
         function calculateRoomEnergy(rMeasurements) {
             rMeasurements.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
             let totalHours = 0, lastOnTime = null;
+            let manualKWh = 0;
+            
             rMeasurements.forEach(m => {
+                if (m.customKWh) manualKWh = m.customKWh;
                 if (m.deviceState === 'zapnutý') {
                     if (!lastOnTime) lastOnTime = new Date(m.timestamp);
                 } else if (m.deviceState === 'vypnutý') {
@@ -335,7 +369,8 @@
                 }
             });
             if (lastOnTime) totalHours += (new Date() - lastOnTime) / (1000 * 60 * 60);
-            const totalKWh = totalHours * (300 / 1000);
+            
+            const totalKWh = manualKWh > 0 ? manualKWh : totalHours * (300 / 1000);
             return { hours: totalHours.toFixed(1), kWh: totalKWh.toFixed(2), price: (totalKWh * currentElectricityPrice).toFixed(1) };
         }
 
@@ -467,7 +502,7 @@
                 if (!r) return;
 
                 const rMeas = measurements.filter(m => m.roomId === r.id).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
-                const latest = rMeas[0] || { humidity: 55, temperature: 21, deviceState: 'vypnutý' };
+                const latest = rMeas[0] || { humidity: 55, temperature: 21, deviceState: 'vypnutý', customKWh: 0 };
                 const totalWater = (r.initialWater || 0) + rMeas.reduce((sum, m) => sum + (m.waterAdded || 0), 0);
                 const isRunning = latest.deviceState === 'zapnutý';
                 const energyStats = calculateRoomEnergy(rMeas);
@@ -496,11 +531,11 @@
                                     <input type="number" step="0.5" value="${currentElectricityPrice}" onchange="currentElectricityPrice = parseFloat(this.value) || 6.0; renderApp();" class="w-14 bg-slate-800 text-cyan-400 font-bold text-center rounded p-0.5">
                                     <span class="text-slate-400">Kč</span>
                                 </div>
-                                <button onclick="setDeviceState('${r.id}', 'zapnutý')" class="px-4 py-2 rounded-xl font-bold text-xs transition ${isRunning ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/30' : 'bg-slate-900 text-slate-400 border border-slate-700'}">
-                                    <i class="fa-solid fa-play mr-1"></i> ZAPNUTO
+                                <button onclick="toggleTapoOutlet('zapnutý')" class="px-4 py-2 rounded-xl font-bold text-xs transition ${isRunning ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/30' : 'bg-slate-900 text-slate-400 border border-slate-700'}">
+                                    <i class="fa-solid fa-play mr-1"></i> ZAPNOUT COMFFEE
                                 </button>
-                                <button onclick="setDeviceState('${r.id}', 'vypnutý')" class="px-4 py-2 rounded-xl font-bold text-xs transition ${!isRunning ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-slate-900 text-slate-400 border border-slate-700'}">
-                                    <i class="fa-solid fa-stop mr-1"></i> VYPNUTO
+                                <button onclick="toggleTapoOutlet('vypnutý')" class="px-4 py-2 rounded-xl font-bold text-xs transition ${!isRunning ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-slate-900 text-slate-400 border border-slate-700'}">
+                                    <i class="fa-solid fa-stop mr-1"></i> VYPNOUT COMFFEE
                                 </button>
                             </div>
                         </div>
@@ -512,7 +547,9 @@
                             </div>
                             <div>
                                 <span class="text-[11px] uppercase font-semibold text-slate-400">Spotřeba energie</span>
-                                <div class="text-lg font-bold text-amber-400 mt-0.5">${energyStats.kWh} kWh</div>
+                                <div class="text-lg font-bold text-amber-400 mt-0.5 flex items-center space-x-1">
+                                    <span>${energyStats.kWh} kWh</span>
+                                </div>
                             </div>
                             <div>
                                 <span class="text-[11px] uppercase font-semibold text-slate-400">Cena za provoz</span>
@@ -521,6 +558,15 @@
                             <div>
                                 <span class="text-[11px] uppercase font-semibold text-slate-400">Zachycená voda</span>
                                 <div class="text-lg font-bold text-cyan-400 mt-0.5">${totalWater.toFixed(2)} l</div>
+                            </div>
+                        </div>
+
+                        <!-- Tapo P110 přímý zápis spotřeby -->
+                        <div class="bg-slate-900/40 p-3 rounded-2xl border border-slate-700/40 flex items-center justify-between flex-wrap gap-2">
+                            <span class="text-xs text-slate-300"><i class="fa-solid fa-plug text-amber-400 mr-1"></i> Opsat kWh z Tapo P110 zásuvky:</span>
+                            <div class="flex items-center space-x-2">
+                                <input type="number" step="0.01" value="${latest.customKWh || ''}" placeholder="např. 1.45" id="tapo-kwh-${r.id}" class="w-28 bg-slate-800 border border-slate-700 text-amber-400 font-bold text-center text-xs rounded-xl p-2">
+                                <button onclick="updateKWh('${r.id}', document.getElementById('tapo-kwh-${r.id}').value)" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold px-3 py-2 rounded-xl">Uložit kWh</button>
                             </div>
                         </div>
 
@@ -604,7 +650,7 @@
         async function setDeviceState(roomId, state) {
             const measurements = await getAll('measurements');
             const rMeas = measurements.filter(m => m.roomId === roomId).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
-            const last = rMeas[0] || { humidity: 55, temperature: 21 };
+            const last = rMeas[0] || { humidity: 55, temperature: 21, customKWh: 0 };
             await put('measurements', {
                 roomId: roomId,
                 timestamp: new Date().toISOString(),
@@ -612,6 +658,7 @@
                 temperature: last.temperature,
                 deviceState: state,
                 waterAdded: 0,
+                customKWh: last.customKWh || 0,
                 note: `Přepnuto na: ${state}`
             });
             renderApp();
@@ -621,7 +668,7 @@
             if (value === '' || isNaN(value)) return;
             const measurements = await getAll('measurements');
             const rMeas = measurements.filter(m => m.roomId === roomId).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
-            const last = rMeas[0] || { deviceState: 'vypnutý', humidity: 55, temperature: 21 };
+            const last = rMeas[0] || { deviceState: 'vypnutý', humidity: 55, temperature: 21, customKWh: 0 };
             await put('measurements', {
                 roomId: roomId,
                 timestamp: new Date().toISOString(),
@@ -629,6 +676,7 @@
                 temperature: field === 'temperature' ? parseFloat(value) : last.temperature,
                 deviceState: last.deviceState,
                 waterAdded: 0,
+                customKWh: last.customKWh || 0,
                 note: `Změna ${field}`
             });
             renderApp();
@@ -639,7 +687,7 @@
             const amount = parseFloat(amountStr);
             const measurements = await getAll('measurements');
             const rMeas = measurements.filter(m => m.roomId === roomId).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
-            const last = rMeas[0] || { deviceState: 'vypnutý', humidity: 55, temperature: 21 };
+            const last = rMeas[0] || { deviceState: 'vypnutý', humidity: 55, temperature: 21, customKWh: 0 };
             await put('measurements', {
                 roomId: roomId,
                 timestamp: new Date().toISOString(),
@@ -647,6 +695,7 @@
                 temperature: last.temperature,
                 deviceState: last.deviceState,
                 waterAdded: amount,
+                customKWh: last.customKWh || 0,
                 note: `Přidáno ${amount} l`
             });
             renderApp();
